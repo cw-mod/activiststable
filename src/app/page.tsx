@@ -41,6 +41,8 @@ import {
   Copy,
   Download,
   Eraser,
+  FileDown,
+  FileUp,
   ListChecks,
   Pencil,
   Plus,
@@ -52,15 +54,17 @@ import {
 } from 'lucide-react'
 import DozoryTool from '@/components/dozory-tool'
 import { cn } from '@/lib/utils'
-
-type Activist = {
-  id: string
-  name: string
-  extId: string
-  categories: string
-  createdAt: string
-  updatedAt: string
-}
+import {
+  addActivist,
+  buildBackup,
+  clearActivists,
+  deleteActivist,
+  loadActivists,
+  restoreBackup,
+  saveActivists,
+  updateActivist,
+} from '@/lib/store'
+import type { Activist } from '@/lib/store'
 
 const CATEGORIES: { key: string; label: string; hint: string }[] = [
   { key: 'patrol', label: 'Патрули', hint: 'пограничные патрули' },
@@ -212,18 +216,17 @@ export default function Page() {
   const [bbText, setBbText] = useState('')
   const [bbFrom, setBbFrom] = useState('')
   const [bbTo, setBbTo] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const snapshotRef = useRef<Activist[] | null>(null)
 
-  const load = useCallback(async () => {
+  // data lives in localStorage (GitHub Pages has no server) — load is instant
+  const load = useCallback(() => {
     try {
-      const res = await fetch('/api/activists', { cache: 'no-store' })
-      if (!res.ok) throw new Error('bad status')
-      const data = (await res.json()) as Activist[]
-      setActivists([...data].sort(ruCompare))
+      setActivists([...loadActivists()].sort(ruCompare))
       setLoadError(null)
     } catch {
-      setLoadError('Не удалось загрузить данные')
+      setLoadError('Не удалось загрузить данные из браузера')
     } finally {
       setLoading(false)
     }
@@ -346,16 +349,11 @@ export default function Page() {
       : [...parseCats(a.categories), key]
     withSnapshot(activists)
     const nextCats = nextKeys.join(',')
-    setActivists((prev) =>
-      prev.map((x) => (x.id === a.id ? { ...x, categories: nextCats } : x))
-    )
+    const next = activists.map((x) => (x.id === a.id ? { ...x, categories: nextCats } : x))
+    setActivists(next)
     try {
-      const res = await fetch(`/api/activists/${a.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categories: nextCats }),
-      })
-      if (!res.ok) throw new Error('bad status')
+      const res = updateActivist(a.id, { categories: nextCats })
+      if (!res.ok) throw new Error(res.error)
       snapshotRef.current = null
     } catch {
       revertSnapshot()
@@ -399,33 +397,27 @@ export default function Page() {
     setSaving(true)
     const categories = Array.from(formCats).join(',')
     try {
-      const res = await fetch(
-        editing ? `/api/activists/${editing.id}` : '/api/activists',
-        {
-          method: editing ? 'PATCH' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, extId, categories }),
-        }
-      )
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
+      const result = editing
+        ? updateActivist(editing.id, { name, extId, categories })
+        : addActivist(name, extId, categories)
+      if (!result.ok) {
         toast({
           title: editing ? 'Не удалось сохранить' : 'Не удалось добавить',
-          description: (data && data.error) || 'Попробуйте ещё раз',
+          description: result.error || 'Попробуйте ещё раз',
           variant: 'destructive',
         })
         return
       }
       setDialogOpen(false)
-      await load()
+      load()
       toast({
         title: editing ? 'Сохранено' : 'Добавлено',
         description: `${name} (ID: ${extId})`,
       })
     } catch {
       toast({
-        title: 'Ошибка сети',
-        description: 'Проверьте соединение и попробуйте ещё раз',
+        title: 'Ошибка',
+        description: 'Попробуйте ещё раз',
         variant: 'destructive',
       })
     } finally {
@@ -440,8 +432,7 @@ export default function Page() {
     withSnapshot(activists)
     setActivists((prev) => prev.filter((x) => x.id !== target.id))
     try {
-      const res = await fetch(`/api/activists/${target.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('bad status')
+      deleteActivist(target.id)
       snapshotRef.current = null
       toast({ title: 'Удалено', description: `${target.name} (ID: ${target.extId})` })
     } catch {
@@ -460,8 +451,7 @@ export default function Page() {
     setActivists([])
     setQuery('')
     try {
-      const res = await fetch('/api/activists', { method: 'DELETE' })
-      if (!res.ok) throw new Error('bad status')
+      clearActivists()
       snapshotRef.current = null
       toast({
         title: 'Список очищен',
@@ -501,19 +491,15 @@ export default function Page() {
     const catsStr = Array.from(importCats).join(',')
     try {
       for (const p of valid) {
-        const res = await fetch('/api/activists', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: p.name, extId: p.extId, categories: catsStr }),
-        })
-        if (res.ok) added++
+        const result = addActivist(p.name, p.extId, catsStr)
+        if (result.ok) added++
         else skipped++
       }
       setImportOpen(false)
       setImportText('')
-      await load()
+      load()
       const parts = [`Добавлено: ${added}`]
-      if (skipped) parts.push(`Пропущено (повтор ID или ошибка): ${skipped}`)
+      if (skipped) parts.push(`Пропущено (повтор ID): ${skipped}`)
       if (invalid) parts.push(`Строк без ID: ${invalid}`)
       toast({
         title: 'Импорт завершён',
@@ -522,7 +508,7 @@ export default function Page() {
       })
     } catch {
       toast({
-        title: 'Ошибка сети',
+        title: 'Ошибка',
         description: 'Импорт прерван, попробуйте ещё раз',
         variant: 'destructive',
       })
@@ -555,6 +541,44 @@ export default function Page() {
     link.click()
     URL.revokeObjectURL(url)
     toast({ title: 'Экспорт готов', description: `Файл aktivisty.csv, активистов: ${sorted.length}` })
+  }
+
+  const downloadBackup = () => {
+    const json = JSON.stringify(buildBackup(activists), null, 2)
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `aktivisty-backup-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast({ title: 'Резервная копия скачана', description: `Активистов: ${activists.length}` })
+  }
+
+  const onBackupFile = async (file: File | undefined) => {
+    if (!file) return
+    let text = ''
+    try {
+      text = await file.text()
+    } catch {
+      toast({ title: 'Не удалось прочитать файл', variant: 'destructive' })
+      return
+    }
+    const mode = activists.length > 0 ? 'merge' : 'replace'
+    const result = restoreBackup(text, mode)
+    if (result.ok) {
+      load()
+      toast({
+        title: 'Восстановлено',
+        description:
+          mode === 'replace'
+            ? `Загружено активистов: ${result.restored}`
+            : `Добавлено новых: ${result.restored} (повторы ID пропущены)`,
+      })
+    } else {
+      toast({ title: 'Ошибка восстановления', description: result.error, variant: 'destructive' })
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -666,6 +690,27 @@ export default function Page() {
               <Download className="h-4 w-4 mr-1" aria-hidden="true" />
               Экспорт CSV
             </Button>
+            <Button variant="outline" onClick={downloadBackup} disabled={activists.length === 0}>
+              <FileDown className="h-4 w-4 mr-1" aria-hidden="true" />
+              Резерв
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Восстановить из резервной копии"
+            >
+              <FileUp className="h-4 w-4 mr-1" aria-hidden="true" />
+              Восстановить
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => onBackupFile(e.target.files?.[0])}
+              aria-hidden="true"
+              tabIndex={-1}
+            />
             <Button variant="outline" onClick={openBb} disabled={activists.length === 0}>
               <Braces className="h-4 w-4 mr-1" aria-hidden="true" />
               BB-код
