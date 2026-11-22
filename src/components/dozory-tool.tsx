@@ -706,6 +706,18 @@ export default function DozoryTool() {
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={copySheet} disabled={people.length === 0 || dates.length === 0}>
+              <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
+              Копировать даты
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={copyCompactSheet}
+              disabled={people.length === 0 || dates.length === 0}
+            >
+              Даты компактно
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setRosterPasteOpen((v) => !v)}>
               <ClipboardPaste className="h-4 w-4 mr-1" aria-hidden="true" />
               Загрузить состав
@@ -809,12 +821,9 @@ export default function DozoryTool() {
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={copySheet}>
+              <Button onClick={copySheet} disabled={dates.length === 0}>
                 <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
                 Копировать даты
-              </Button>
-              <Button variant="outline" onClick={copyCompactSheet}>
-                Даты компактно
               </Button>
               <Button variant="outline" onClick={copyReport}>
                 <ScrollText className="h-4 w-4 mr-1" aria-hidden="true" />
