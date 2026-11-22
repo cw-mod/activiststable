@@ -17,9 +17,6 @@ export const metadata: Metadata = {
   title: "Активисты — учёт по категориям",
   description:
     "Список активистов по категориям: Патрули, Дозоры, Охота, Горы, Туннели, Скалы. Алфавитный порядок и счётчик повторов.",
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
 };
 
 export default function RootLayout({
