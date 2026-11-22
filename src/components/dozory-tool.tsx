@@ -79,11 +79,73 @@ function pointsWord(n: number): string {
   return plural(n, 'балл', 'балла', 'баллов')
 }
 
+/** "16.11.26" / "16.11.2026" → "16.11" */
+function shortDate(date: string): string {
+  const m = date.trim().match(/^(\d{1,2})\.(\d{1,2})/)
+  if (!m) return date
+  return `${Number(m[1])}.${Number(m[2])}`
+}
+
+/** Sort key for DD.MM[.YY] dates within a season/year-agnostic week list */
+function dateSortKey(date: string): number {
+  const m = date.trim().match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/)
+  if (!m) return 0
+  const d = Number(m[1])
+  const mo = Number(m[2])
+  let y = m[3] ? Number(m[3]) : 0
+  if (y > 0 && y < 100) y += 2000
+  return y * 10000 + mo * 100 + d
+}
+
 function cleanText(s: string): string {
   return s
     .replace(/[\u3164\u200b\u00a0\u200e\u200f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+type DayBucket = {
+  date: string
+  short: string
+  active: { name: string; extId: string }[]
+  passive: { name: string; extId: string }[]
+}
+
+function byDate(entries: WatchEntry[]): DayBucket[] {
+  const map = new Map<string, DayBucket>()
+  for (const e of entries) {
+    const key = shortDate(e.date)
+    let b = map.get(key)
+    if (!b) {
+      b = { date: e.date, short: key, active: [], passive: [] }
+      map.set(key, b)
+    }
+    const who = { name: e.name, extId: e.extId }
+    const list = e.kind === 'active' ? b.active : b.passive
+    if (!list.some((x) => x.extId === e.extId)) list.push(who)
+  }
+  for (const b of map.values()) {
+    const cmp = (a: { name: string }, c: { name: string }) =>
+      a.name.localeCompare(c.name, 'ru', { sensitivity: 'base' })
+    b.active.sort(cmp)
+    b.passive.sort(cmp)
+  }
+  return Array.from(map.values()).sort((a, b) => dateSortKey(a.date) - dateSortKey(b.date))
+}
+
+/** Unique date+kind chips for a person, chronological */
+function personDateChips(entries: WatchEntry[]): { short: string; kind: WatchKind }[] {
+  const seen = new Set<string>()
+  const chips: { short: string; kind: WatchKind; key: number }[] = []
+  for (const e of entries) {
+    const short = shortDate(e.date)
+    const id = `${short}|${e.kind}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    chips.push({ short, kind: e.kind, key: dateSortKey(e.date) })
+  }
+  chips.sort((a, b) => a.key - b.key || (a.kind === 'passive' ? -1 : 1))
+  return chips.map(({ short, kind }) => ({ short, kind }))
 }
 
 // "1 час", "30 минут", "1.5 часов", "2,5 часа" -> hours
@@ -204,17 +266,36 @@ function aggregate(entries: WatchEntry[]): Person[] {
   return Array.from(map.values())
 }
 
-function buildReport(people: Person[]): string {
+function buildReport(people: Person[], days: DayBucket[]): string {
   const lines = people.map((p) => {
     const parts: string[] = []
     if (p.passiveHours > 0) parts.push(`пассив ${fmt(p.passiveHours)}`)
     if (p.activeHours > 0) parts.push(`актив ${fmt(p.activeHours)}`)
     const detail = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-    return `${p.name} [${p.extId}] — ${fmt(p.hours)} ${hoursWord(p.hours)}${detail} — ${fmt(p.points)} ${pointsWord(p.points)}`
+    const dates = personDateChips(p.entries)
+      .map((c) => `${c.short} ${c.kind === 'passive' ? 'пасс' : 'акт'}`)
+      .join(', ')
+    const datesPart = dates ? ` · ${dates}` : ''
+    return `${p.name} [${p.extId}] — ${fmt(p.hours)} ${hoursWord(p.hours)}${detail} — ${fmt(p.points)} ${pointsWord(p.points)}${datesPart}`
   })
   const totH = round2(people.reduce((s, p) => s + p.hours, 0))
   const totP = round2(people.reduce((s, p) => s + p.points, 0))
   lines.push(`Итого: ${fmt(totH)} ${hoursWord(totH)} — ${fmt(totP)} ${pointsWord(totP)}`)
+  if (days.length > 0) {
+    lines.push('')
+    lines.push('По датам:')
+    for (const d of days) {
+      const act =
+        d.active.length > 0
+          ? `актив: ${d.active.map((x) => `${x.name} [${x.extId}]`).join(', ')}`
+          : 'актив: –'
+      const pass =
+        d.passive.length > 0
+          ? `пассив: ${d.passive.map((x) => `${x.name} [${x.extId}]`).join(', ')}`
+          : 'пассив: –'
+      lines.push(`${d.short} — ${act}; ${pass}`)
+    }
+  }
   return lines.join('\n')
 }
 
@@ -261,6 +342,7 @@ export default function DozoryTool() {
 
   const parsed = useMemo(() => parseDozory(text), [text])
   const people = useMemo(() => aggregate(parsed.entries), [parsed.entries])
+  const days = useMemo(() => byDate(parsed.entries), [parsed.entries])
 
   const sortedPeople = useMemo(() => {
     const arr = [...people]
@@ -307,10 +389,14 @@ export default function DozoryTool() {
   }
 
   async function copyReport() {
-    const ok = await copyText(buildReport(sortedPeople))
+    const report = buildReport(sortedPeople, days)
+    const ok = await copyText(report)
     toast(
       ok
-        ? { title: 'Разбалловка скопирована', description: `Строк: ${sortedPeople.length + 1}` }
+        ? {
+            title: 'Разбалловка скопирована',
+            description: `Участников: ${sortedPeople.length}, дат: ${days.length}`,
+          }
         : { title: 'Не удалось скопировать' }
     )
   }
@@ -455,12 +541,13 @@ export default function DozoryTool() {
 
           <div className="rounded-lg border overflow-hidden">
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-              <Table className="min-w-[720px]">
+              <Table className="min-w-[860px]">
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
                     <TableHead className="w-10 text-center">#</TableHead>
                     <TableHead>Дозорный</TableHead>
                     <TableHead>ID</TableHead>
+                    <TableHead className="min-w-[9rem]">Даты</TableHead>
                     <TableHead className="text-center">Пассив, ч</TableHead>
                     <TableHead className="text-center">Актив, ч</TableHead>
                     <TableHead className="text-center">Всего, ч</TableHead>
@@ -474,6 +561,7 @@ export default function DozoryTool() {
                   {sortedPeople.map((p, idx) => {
                     const isOpen = expanded.has(p.extId)
                     const hasWarn = p.entries.some((e) => e.warning)
+                    const chips = personDateChips(p.entries)
                     return (
                       <Fragment key={p.extId}>
                         <TableRow
@@ -498,6 +586,25 @@ export default function DozoryTool() {
                             </button>
                           </TableCell>
                           <TableCell className="font-mono text-xs text-muted-foreground">{p.extId}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {chips.map((c) => (
+                                <span
+                                  key={`${c.short}-${c.kind}`}
+                                  className={cn(
+                                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap',
+                                    c.kind === 'passive'
+                                      ? 'bg-muted text-muted-foreground'
+                                      : 'bg-emerald-100 text-emerald-700'
+                                  )}
+                                  title={`${c.short}: ${c.kind === 'passive' ? 'пассивный' : 'активный'} дозор`}
+                                >
+                                  <span className="font-mono">{c.short}</span>
+                                  <span>{c.kind === 'passive' ? 'пасс' : 'акт'}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </TableCell>
                           <TableCell className="text-center text-sm">{p.passiveHours > 0 ? fmt(p.passiveHours) : '–'}</TableCell>
                           <TableCell className="text-center text-sm">{p.activeHours > 0 ? fmt(p.activeHours) : '–'}</TableCell>
                           <TableCell className="text-center text-sm font-medium">{fmt(p.hours)}</TableCell>
@@ -522,7 +629,7 @@ export default function DozoryTool() {
                         </TableRow>
                         {isOpen && (
                           <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={8} className="bg-muted/20">
+                            <TableCell colSpan={9} className="bg-muted/20">
                               <div className="space-y-1.5 py-1">
                                 {p.entries.map((e, i) => (
                                   <div key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -560,10 +667,10 @@ export default function DozoryTool() {
               </Table>
             </div>
             <div className="border-t bg-muted/30">
-              <Table className="min-w-[720px]">
+              <Table className="min-w-[860px]">
                 <TableBody>
                   <TableRow className="hover:bg-transparent">
-                    <TableCell className="text-xs text-muted-foreground font-medium" colSpan={3}>
+                    <TableCell className="text-xs text-muted-foreground font-medium" colSpan={4}>
                       Итого
                     </TableCell>
                     <TableCell className="text-center text-sm font-semibold">{fmt(totals.passive)}</TableCell>
@@ -572,6 +679,86 @@ export default function DozoryTool() {
                     <TableCell className="text-center text-sm font-semibold">{fmt(totals.points)}</TableCell>
                     <TableCell />
                   </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          {/* who dozored on which date */}
+          <div className="rounded-lg border overflow-hidden">
+            <div className="border-b bg-muted/40 px-4 py-2.5">
+              <h3 className="text-sm font-medium">По датам — кто дозорил</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                На каждую дату: активный и пассивный состав
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[640px]">
+                <TableHeader>
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableHead className="w-24">Дата</TableHead>
+                    <TableHead>Активный</TableHead>
+                    <TableHead>Пассивный</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {days.map((d) => (
+                    <TableRow key={d.short}>
+                      <TableCell className="font-mono font-medium whitespace-nowrap">{d.short}</TableCell>
+                      <TableCell className="text-sm">
+                        {d.active.length === 0 ? (
+                          <span className="text-muted-foreground">–</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-x-2 gap-y-1">
+                            {d.active.map((x) => (
+                              <button
+                                key={`a-${d.short}-${x.extId}`}
+                                type="button"
+                                className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 hover:bg-emerald-200"
+                                title={`Скопировать ${x.name} [${x.extId}]`}
+                                onClick={async () => {
+                                  const ok = await copyText(`${x.name} [${x.extId}]`)
+                                  toast(
+                                    ok
+                                      ? { title: 'Скопировано', description: `${x.name} [${x.extId}]` }
+                                      : { title: 'Не удалось скопировать' }
+                                  )
+                                }}
+                              >
+                                {x.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {d.passive.length === 0 ? (
+                          <span className="text-muted-foreground">–</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-x-2 gap-y-1">
+                            {d.passive.map((x) => (
+                              <button
+                                key={`p-${d.short}-${x.extId}`}
+                                type="button"
+                                className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                                title={`Скопировать ${x.name} [${x.extId}]`}
+                                onClick={async () => {
+                                  const ok = await copyText(`${x.name} [${x.extId}]`)
+                                  toast(
+                                    ok
+                                      ? { title: 'Скопировано', description: `${x.name} [${x.extId}]` }
+                                      : { title: 'Не удалось скопировать' }
+                                  )
+                                }}
+                              >
+                                {x.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
