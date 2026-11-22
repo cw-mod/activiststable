@@ -44,6 +44,7 @@ jobs:
           touch docs/.nojekyll
 
           cp -a docs/.nojekyll docs/index.html docs/404.html docs/index.txt docs/logo.svg docs/robots.txt .
+          cp -a docs/icon.png docs/apple-icon.png .
           cp -a docs/__next.__PAGE__.txt docs/__next._full.txt docs/__next._tree.txt .
           cp -a docs/_not-found.html docs/_not-found.txt .
           rm -rf _next _not-found
@@ -54,6 +55,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs .nojekyll index.html 404.html index.txt logo.svg robots.txt \
+            icon.png apple-icon.png \
             __next.__PAGE__.txt __next._full.txt __next._tree.txt \
             _not-found.html _not-found.txt _next _not-found || true
           if git diff --cached --quiet; then
