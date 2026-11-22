@@ -4,8 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "next build",
+    "build": "DEPLOY_TARGET=pages next build",
+    "build:pages": "DEPLOY_TARGET=pages next build",
+    "build:server": "next build && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "pack:server": "bash scripts/pack-release.sh",
     "start": "bunx serve out",
+    "start:server": "NODE_ENV=production node .next/standalone/server.js",
     "lint": "eslint .",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",

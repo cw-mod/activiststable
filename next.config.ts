@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
-// GitHub Pages: static export only, hosted at https://cw-mod.github.io/activiststable/
+// pages  → GitHub Pages static export at /activiststable
+// server → Node standalone for https://activists.miew.ru/
+const isPages = process.env.DEPLOY_TARGET === "pages";
+
 const nextConfig: NextConfig = {
-  output: "export",
-  basePath: "/activiststable",
+  output: isPages ? "export" : "standalone",
+  ...(isPages ? { basePath: "/activiststable" } : {}),
   images: {
     unoptimized: true,
   },

@@ -1,0 +1,28 @@
+# /etc/systemd/system/activiststable.service
+# Isolated unit. Do not change other services from this file.
+[Unit]
+Description=activiststable (Next.js, 127.0.0.1:3010)
+After=network.target
+
+[Service]
+Type=simple
+User=activists
+Group=activists
+WorkingDirectory=/opt/activiststable/current
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3010
+Environment=DATABASE_URL=file:/opt/activiststable/data/activists.db
+Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=2
+MemoryMax=512M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/activiststable/data
+
+[Install]
+WantedBy=multi-user.target

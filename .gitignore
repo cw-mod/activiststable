@@ -66,3 +66,7 @@ server.log
 /.github-build/
 
 .playwright-mcp/
+
+# server deploy artifacts
+/release/
+/release.tgz
