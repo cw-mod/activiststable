@@ -388,6 +388,11 @@ export default function DozoryTool() {
     )
   }
 
+  async function copyId(extId: string) {
+    const ok = await copyText(extId)
+    toast(ok ? { title: 'ID скопирован', description: extId } : { title: 'Не удалось скопировать' })
+  }
+
   async function copyReport() {
     const report = buildReport(sortedPeople, days)
     const ok = await copyText(report)
@@ -585,7 +590,21 @@ export default function DozoryTool() {
                               />
                             </button>
                           </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">{p.extId}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            <button
+                              type="button"
+                              onClick={() => copyId(p.extId)}
+                              className="group inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
+                              aria-label={`Скопировать ID ${p.extId}`}
+                              title="Клик — скопировать только ID"
+                            >
+                              {p.extId}
+                              <Copy
+                                className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
+                                aria-hidden="true"
+                              />
+                            </button>
+                          </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {chips.map((c) => (

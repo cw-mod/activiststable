@@ -315,6 +315,14 @@ export default function Page() {
     }
   }
 
+  const copyId = async (extId: string) => {
+    if (await copyText(extId)) {
+      toast({ title: 'ID скопирован', description: extId })
+    } else {
+      toast({ title: 'Не удалось скопировать', description: extId, variant: 'destructive' })
+    }
+  }
+
   const copyBb = async () => {
     if (await copyText(bbText)) {
       toast({ title: 'BB-код скопирован', description: 'Вставь его в тему на форуме' })
@@ -800,7 +808,21 @@ export default function Page() {
                                 />
                               </button>
                             </TableCell>
-                            <TableCell className="font-mono text-xs text-muted-foreground">{a.extId}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              <button
+                                type="button"
+                                onClick={() => copyId(a.extId)}
+                                className="group inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
+                                aria-label={`Скопировать ID ${a.extId}`}
+                                title="Клик — скопировать только ID"
+                              >
+                                {a.extId}
+                                <Copy
+                                  className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </TableCell>
                             {CATEGORIES.map((c) => {
                               const active = cats.has(c.key)
                               return (
