@@ -1,5 +1,4 @@
-# Build static site into /docs on mistress for GitHub Pages
-# Pages settings: Branch mistress → Folder /docs
+# Build static site for GitHub Pages on mistress (folder / or /docs).
 # Site: https://cw-mod.github.io/activiststable/
 name: Deploy to GitHub Pages
 
@@ -18,7 +17,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Skip the commit that this workflow itself pushes (avoids loops)
     if: github.actor != 'github-actions[bot]'
     steps:
       - name: Checkout
@@ -35,20 +33,30 @@ jobs:
       - name: Build static site
         run: bun run build
 
-      - name: Publish to docs/
+      - name: Publish static files to docs/ and root
         run: |
+          set -euo pipefail
           rm -rf docs
           mkdir -p docs
           cp -a out/. docs/
           touch docs/.nojekyll
 
-      - name: Commit and push docs
+          # Root copies so Pages folder "/" works (mistress source)
+          cp -a docs/.nojekyll docs/index.html docs/404.html docs/index.txt docs/logo.svg docs/robots.txt .
+          cp -a docs/__next.__PAGE__.txt docs/__next._full.txt docs/__next._tree.txt .
+          cp -a docs/_not-found.html docs/_not-found.txt .
+          rm -rf _next _not-found
+          cp -a docs/_next docs/_not-found .
+
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs
+          git add docs .nojekyll index.html 404.html index.txt logo.svg robots.txt \
+            __next.__PAGE__.txt __next._full.txt __next._tree.txt \
+            _not-found.html _not-found.txt _next _not-found || true
           if git diff --cached --quiet; then
-            echo "No docs changes"
+            echo "No publish changes"
             exit 0
           fi
           git commit -m "Deploy Pages site ${GITHUB_SHA}"
