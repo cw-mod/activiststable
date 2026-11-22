@@ -634,29 +634,29 @@ export default function DozoryTool() {
               >
                 <thead>
                   <tr className="bg-muted">
-                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[9rem] max-w-[11rem]">
+                    <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[9rem] max-w-[11rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
                       Имя CatWar
                     </th>
-                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[5.5rem]">
+                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[5.5rem]">
                       ID
                     </th>
-                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight">
+                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight">
                       Общий
                       <br />
                       балл
                     </th>
-                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem]">
+                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem]">
                       Активист
                     </th>
                     {dates.map((d) => (
                       <Fragment key={d}>
-                        <th className="sticky top-0 z-20 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
+                        <th className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
                           <div className="font-mono font-semibold text-sm leading-none">{d}</div>
                           <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
                             Актив
                           </div>
                         </th>
-                        <th className="sticky top-0 z-20 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
+                        <th className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
                           <div className="font-mono font-semibold text-sm leading-none">{d}</div>
                           <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             Пассив
@@ -673,15 +673,22 @@ export default function DozoryTool() {
                       <tr
                         key={p.extId}
                         className={cn(
-                          'border-b hover:bg-muted/40',
+                          'group border-b hover:bg-muted/40',
                           hasWarn && 'bg-amber-50/70 dark:bg-amber-950/20'
                         )}
                       >
-                        <td className="border-b border-r px-2 py-2 font-medium max-w-[11rem]">
+                        <td
+                          className={cn(
+                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium max-w-[11rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]',
+                            hasWarn
+                              ? 'bg-amber-50 dark:bg-amber-950'
+                              : 'bg-background group-hover:bg-muted'
+                          )}
+                        >
                           <button
                             type="button"
                             onClick={() => copyName(p)}
-                            className="group inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
+                            className="group/name inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
                             aria-label={`Скопировать ${p.name} [${p.extId}]`}
                             title="Клик — скопировать «Имя [ID]»"
                           >
@@ -689,7 +696,7 @@ export default function DozoryTool() {
                               {p.name}
                             </span>
                             <Copy
-                              className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
+                              className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/name:opacity-70"
                               aria-hidden="true"
                             />
                           </button>
