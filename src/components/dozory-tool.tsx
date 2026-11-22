@@ -7,8 +7,7 @@ import { useToast } from '@/hooks/use-toast'
 import { loadActivists, updateActivist } from '@/lib/store'
 import { DEFAULT_DOZORY_ROSTER } from '@/lib/dozory-roster.default'
 import {
-  buildAlignedSheetTsv,
-  buildCompactTsv,
+  buildDateColumnsTsv,
   clearRoster,
   loadRoster,
   mergeRosterWithScores,
@@ -479,30 +478,27 @@ export default function DozoryTool() {
 
   async function copySheet() {
     const rows = displayRows.filter((r) => !r.extra)
-    const useAligned = !!(roster && roster.roster.length > 0)
-    const tsv = useAligned
-      ? buildAlignedSheetTsv(rows, dates, { dataOnly: true })
-      : buildCompactTsv(rows, dates)
+    // Only Active/Passive hour cells — paste at first «Активный» of the week on the sheet
+    const tsv = buildDateColumnsTsv(rows, dates, 'aligned')
     const ok = await copyText(tsv)
     toast(
       ok
         ? {
-            title: 'Скопировано для Google Sheets',
-            description: useAligned
-              ? `Вставьте в A5 листа «ДОЗОРЫ»: ${merged.matched} совпадений по ID → часы в колонках дат`
-              : 'Вставьте в таблицу (Ctrl+V) — колонки как в шаблоне',
+            title: 'Скопированы только даты',
+            description: `Активный/Пассивный по ${dates.length} датам · ${merged.matched} совпадений по ID. Вставьте в первую ячейку «Активный» первой даты.`,
           }
         : { title: 'Не удалось скопировать' }
     )
   }
 
   async function copyCompactSheet() {
-    const ok = await copyText(buildCompactTsv(displayRows, dates))
+    const rows = displayRows.filter((r) => !r.extra)
+    const ok = await copyText(buildDateColumnsTsv(rows, dates, 'compact'))
     toast(
       ok
         ? {
-            title: 'Компактная таблица скопирована',
-            description: 'Имя · ID · балл · активист · даты (Актив/Пассив)',
+            title: 'Скопированы колонки дат',
+            description: 'Только Активный / Пассивный по каждой дате (без имени и ID)',
           }
         : { title: 'Не удалось скопировать' }
     )
@@ -815,10 +811,10 @@ export default function DozoryTool() {
             <div className="flex flex-wrap gap-2">
               <Button onClick={copySheet}>
                 <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
-                В Google Sheets
+                Копировать даты
               </Button>
               <Button variant="outline" onClick={copyCompactSheet}>
-                Компактно
+                Даты компактно
               </Button>
               <Button variant="outline" onClick={copyReport}>
                 <ScrollText className="h-4 w-4 mr-1" aria-hidden="true" />

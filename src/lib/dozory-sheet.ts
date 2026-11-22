@@ -311,10 +311,16 @@ export function buildAlignedSheetTsv(
 }
 
 /**
- * Values-only block for pasting into date columns: for each roster row,
- * Active/Passive pairs for each date (no name/id) — select the first Active cell of the week.
+ * Only date-column values (no Name / ID / score / activist).
+ * - compact: Active\tPassive per date (as in the app table)
+ * - aligned: same layout as Google Sheets day blocks (Active + 3 empty + Passive + 3 empty)
+ *   Paste starting at the first «Активный» cell of the first date (first data row).
  */
-export function buildDateColumnsTsv(people: ScorePerson[], dates: string[]): string {
+export function buildDateColumnsTsv(
+  people: ScorePerson[],
+  dates: string[],
+  mode: 'compact' | 'aligned' = 'compact'
+): string {
   return people
     .filter((p) => !p.extra)
     .map((p) => {
@@ -322,9 +328,14 @@ export function buildDateColumnsTsv(people: ScorePerson[], dates: string[]): str
       for (const d of dates) {
         const a = dayVal(p, d, 'active')
         const s = dayVal(p, d, 'passive')
-        // 4 cells: active, empty, empty, empty — then passive starts 4 cols later in sheet;
-        // for a compact paste into a simplified range we just do active\tpassive
-        cells.push(a > 0 ? fmtSheet(a) : '', s > 0 ? fmtSheet(s) : '')
+        if (mode === 'aligned') {
+          const block = Array.from({ length: SHEET_COLS.daySpan }, () => '')
+          block[SHEET_COLS.activeOffset] = a > 0 ? fmtSheet(a) : ''
+          block[SHEET_COLS.passiveOffset] = s > 0 ? fmtSheet(s) : ''
+          cells.push(...block)
+        } else {
+          cells.push(a > 0 ? fmtSheet(a) : '', s > 0 ? fmtSheet(s) : '')
+        }
       }
       return cells.join('\t')
     })
