@@ -4,19 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
-import { loadActivists, updateActivist } from '@/lib/store'
-import { DEFAULT_DOZORY_ROSTER } from '@/lib/dozory-roster.default'
-import {
-  buildDateColumnsTsv,
-  clearRoster,
-  loadRoster,
-  mergeRosterWithScores,
-  parseSheetRoster,
-  saveRoster,
-  shortDate as sheetShortDate,
-  type ScorePerson,
-  type SheetRoster,
-} from '@/lib/dozory-sheet'
+import { loadActivists } from '@/lib/store'
 import {
   AlertTriangle,
   ChevronDown,
@@ -24,17 +12,13 @@ import {
   Coins,
   Copy,
   Eraser,
-  Link2,
   ListChecks,
   ScrollText,
   Sheet,
   Timer,
-  UserCheck,
   UserRound,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-const ACTIVISTS_CHANGED = 'activists:changed'
 
 const PASSIVE_RATE = 1
 const ACTIVE_RATE = 1.5
@@ -73,6 +57,12 @@ function round2(n: number): number {
 
 function fmt(n: number): string {
   return round2(n).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+}
+
+/** Plain number for spreadsheet paste (comma decimal) */
+function fmtSheet(n: number): string {
+  if (n === 0) return '0'
+  return String(round2(n)).replace('.', ',')
 }
 
 function plural(n: number, one: string, few: string, many: string): string {
@@ -258,14 +248,31 @@ function dayCell(p: Person, day: string, kind: WatchKind): number {
   return kind === 'active' ? d.active : d.passive
 }
 
-function toScorePerson(p: Person): ScorePerson {
-  return {
-    name: p.name,
-    extId: p.extId,
-    points: p.points,
-    byDay: p.byDay,
-    isActivist: p.isActivist,
+/** TSV matching the Google Sheets template for paste */
+function buildSheetTsv(people: Person[], dates: string[]): string {
+  const r1 = ['Имя CatWar', 'ID', 'Общий балл', 'Активист']
+  for (const d of dates) {
+    r1.push(d, '') // date spans active+passive
   }
+  const r2 = ['', '', '', '']
+  for (const _d of dates) {
+    r2.push('Активный', 'Пассивный')
+  }
+  const body = people.map((p) => {
+    const row = [
+      p.name,
+      p.extId,
+      fmtSheet(p.points),
+      p.isActivist ? '1' : '0',
+    ]
+    for (const d of dates) {
+      const a = dayCell(p, d, 'active')
+      const s = dayCell(p, d, 'passive')
+      row.push(a > 0 ? fmtSheet(a) : '', s > 0 ? fmtSheet(s) : '')
+    }
+    return row.join('\t')
+  })
+  return [r1.join('\t'), r2.join('\t'), ...body].join('\n')
 }
 
 function buildReport(people: Person[], dates: string[]): string {
@@ -320,22 +327,11 @@ const COLLAPSE_CHARS = 600
 export default function DozoryTool() {
   const { toast } = useToast()
   const [text, setText] = useState('')
-  const [sortMode, setSortMode] = useState<'alpha' | 'points' | 'roster'>('roster')
+  const [sortMode, setSortMode] = useState<'alpha' | 'points'>('alpha')
   const [hydrated, setHydrated] = useState(false)
   const [activistIds, setActivistIds] = useState<Set<string>>(() => new Set())
   const [inputOpen, setInputOpen] = useState(true)
   const [userToggledInput, setUserToggledInput] = useState(false)
-  const [roster, setRoster] = useState<SheetRoster | null>(null)
-  const [rosterPasteOpen, setRosterPasteOpen] = useState(false)
-  const [rosterPaste, setRosterPaste] = useState('')
-
-  function refreshActivistIds() {
-    try {
-      setActivistIds(new Set(loadActivists().map((a) => a.extId)))
-    } catch {
-      /* ignore */
-    }
-  }
 
   useEffect(() => {
     const saved = localStorage.getItem('dozoryText')
@@ -344,14 +340,12 @@ export default function DozoryTool() {
       setText(saved)
       if (saved.length >= COLLAPSE_CHARS) setInputOpen(false)
     }
-    refreshActivistIds()
-    const savedRoster = loadRoster()
-    setRoster(savedRoster ?? DEFAULT_DOZORY_ROSTER)
+    try {
+      setActivistIds(new Set(loadActivists().map((a) => a.extId)))
+    } catch {
+      /* ignore */
+    }
     setHydrated(true)
-
-    const onChange = () => refreshActivistIds()
-    window.addEventListener(ACTIVISTS_CHANGED, onChange)
-    return () => window.removeEventListener(ACTIVISTS_CHANGED, onChange)
   }, [])
 
   useEffect(() => {
@@ -368,51 +362,14 @@ export default function DozoryTool() {
   }, [text.length, hydrated, userToggledInput])
 
   const parsed = useMemo(() => parseDozory(text), [text])
-  const postDates = useMemo(() => collectDates(parsed.entries), [parsed.entries])
+  const dates = useMemo(() => collectDates(parsed.entries), [parsed.entries])
   const people = useMemo(
     () => aggregate(parsed.entries, activistIds),
     [parsed.entries, activistIds]
   )
 
-  /** Week dates: roster header first, then any extra dates from posts */
-  const dates = useMemo(() => {
-    const fromRoster = (roster?.dates ?? []).map(sheetShortDate).filter(Boolean)
-    const set = new Set(fromRoster)
-    const extra = postDates.filter((d) => !set.has(d))
-    const merged = [...fromRoster, ...extra]
-    if (merged.length > 0) return merged
-    return postDates
-  }, [roster, postDates])
-
-  const merged = useMemo(() => {
-    const scored = people.map(toScorePerson).map((p) => ({
-      ...p,
-      isActivist: activistIds.has(p.extId),
-    }))
-    if (!roster || roster.roster.length === 0) {
-      return {
-        rows: scored,
-        matched: scored.length,
-        unmatchedScores: 0,
-        extras: 0,
-      }
-    }
-    const result = mergeRosterWithScores(roster.roster, scored, dates)
-    // refresh activist flag for empty roster rows
-    return {
-      ...result,
-      rows: result.rows.map((r) => ({
-        ...r,
-        isActivist: activistIds.has(r.extId),
-      })),
-    }
-  }, [people, roster, dates, activistIds])
-
-  const displayRows = useMemo(() => {
-    if (sortMode === 'roster' && roster && roster.roster.length > 0) {
-      return merged.rows
-    }
-    const arr = merged.rows.filter((r) => !r.empty)
+  const sortedPeople = useMemo(() => {
+    const arr = [...people]
     if (sortMode === 'alpha') {
       arr.sort(
         (a, b) =>
@@ -422,19 +379,13 @@ export default function DozoryTool() {
     } else {
       arr.sort(
         (a, b) =>
-          b.points - a.points || a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+          b.points - a.points ||
+          b.hours - a.hours ||
+          a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
       )
     }
     return arr
-  }, [merged.rows, sortMode, roster])
-
-  const sortedPeople = useMemo(() => {
-    // keep Person[] for report that needs hours — rebuild from people map
-    const byId = new Map(people.map((p) => [p.extId, p]))
-    return displayRows
-      .map((r) => byId.get(r.extId))
-      .filter((p): p is Person => !!p)
-  }, [displayRows, people])
+  }, [people, sortMode])
 
   const totals = useMemo(() => {
     let h = 0
@@ -477,108 +428,15 @@ export default function DozoryTool() {
   }
 
   async function copySheet() {
-    const rows = displayRows.filter((r) => !r.extra)
-    // Only Active/Passive hour cells — paste at first «Активный» of the week on the sheet
-    const tsv = buildDateColumnsTsv(rows, dates, 'aligned')
-    const ok = await copyText(tsv)
+    const ok = await copyText(buildSheetTsv(sortedPeople, dates))
     toast(
       ok
         ? {
-            title: 'Скопированы только даты',
-            description: `Активный/Пассивный по ${dates.length} датам · ${merged.matched} совпадений по ID. Вставьте в первую ячейку «Активный» первой даты.`,
+            title: 'Скопировано для таблицы',
+            description: 'Вставьте в Google Sheets (Ctrl+V) — колонки как в шаблоне',
           }
         : { title: 'Не удалось скопировать' }
     )
-  }
-
-  async function copyCompactSheet() {
-    const rows = displayRows.filter((r) => !r.extra)
-    const ok = await copyText(buildDateColumnsTsv(rows, dates, 'compact'))
-    toast(
-      ok
-        ? {
-            title: 'Скопированы колонки дат',
-            description: 'Только Активный / Пассивный по каждой дате (без имени и ID)',
-          }
-        : { title: 'Не удалось скопировать' }
-    )
-  }
-
-  function applyRosterPaste(raw: string) {
-    const parsedRoster = parseSheetRoster(raw)
-    if (!parsedRoster) {
-      toast({
-        title: 'Не разобрать список',
-        description: 'Вставьте строки из листа «ДОЗОРЫ» (Имя + ID) или CSV/TSV экспорта.',
-        variant: 'destructive',
-      })
-      return
-    }
-    const next: SheetRoster = {
-      ...parsedRoster,
-      dates: parsedRoster.dates.length > 0 ? parsedRoster.dates : roster?.dates ?? [],
-      source: 'вставка из Google Sheets',
-    }
-    saveRoster(next)
-    setRoster(next)
-    setSortMode('roster')
-    setRosterPasteOpen(false)
-    setRosterPaste('')
-    toast({
-      title: 'Состав листа загружен',
-      description: `${next.roster.length} человек` + (next.dates.length ? ` · даты ${next.dates.join(', ')}` : ''),
-    })
-  }
-
-  function useDefaultRoster() {
-    saveRoster(DEFAULT_DOZORY_ROSTER)
-    setRoster(DEFAULT_DOZORY_ROSTER)
-    setSortMode('roster')
-    toast({
-      title: 'Шаблон КОНТРОЛЬ ГРОЗА',
-      description: `${DEFAULT_DOZORY_ROSTER.roster.length} человек в составе`,
-    })
-  }
-
-  function resetRoster() {
-    clearRoster()
-    setRoster(DEFAULT_DOZORY_ROSTER)
-    toast({ title: 'Состав сброшен к шаблону' })
-  }
-
-  function applyToSentryColumn() {
-    const ids = new Set(
-      people.filter((p) => p.points > 0 || p.hours > 0).map((p) => p.extId)
-    )
-    if (ids.size === 0) {
-      toast({ title: 'Нет участников дозоров', description: 'Сначала вставьте посты.' })
-      return
-    }
-    const list = loadActivists()
-    let updated = 0
-    let skipped = 0
-    let missing = 0
-    for (const id of ids) {
-      const a = list.find((x) => x.extId === id)
-      if (!a) {
-        missing++
-        continue
-      }
-      const cats = a.categories.split(',').map((c) => c.trim()).filter(Boolean)
-      if (cats.includes('sentry')) {
-        skipped++
-        continue
-      }
-      cats.push('sentry')
-      const res = updateActivist(a.id, { categories: cats.join(',') })
-      if (res.ok) updated++
-    }
-    refreshActivistIds()
-    window.dispatchEvent(new Event(ACTIVISTS_CHANGED))
-    toast({
-      title: 'Колонка «Дозоры»',
-      description: `Проставлено: ${updated} · уже было: ${skipped} · нет в активистах: ${missing}`,
-    })
   }
 
   async function pasteFromBuffer() {
@@ -599,12 +457,6 @@ export default function DozoryTool() {
   const stats = [
     { icon: ListChecks, value: String(parsed.entries.length), label: 'записей', warn: false },
     { icon: UserRound, value: String(people.length), label: 'участников', warn: false },
-    {
-      icon: Link2,
-      value: String(merged.matched),
-      label: 'совпало с листом',
-      warn: false,
-    },
     { icon: Timer, value: fmt(totals.hours), label: 'часов всего', warn: false },
     { icon: Coins, value: fmt(totals.points), label: 'баллов всего', warn: false },
     { icon: AlertTriangle, value: String(totals.warnings), label: 'с сомнениями', warn: totals.warnings > 0 },
@@ -693,91 +545,7 @@ export default function DozoryTool() {
         )}
       </div>
 
-      <div className="rounded-lg border overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-muted/30">
-          <div className="text-sm">
-            <span className="font-medium">Лист «ДОЗОРЫ»</span>
-            <span className="text-muted-foreground">
-              {' '}
-              · состав {roster?.roster.length ?? 0}
-              {roster?.dates?.length ? ` · ${roster.dates.join(', ')}` : ''}
-              {people.length > 0 ? ` · совпало ID ${merged.matched}` : ''}
-              {merged.extras > 0 ? ` · вне списка ${merged.extras}` : ''}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={copySheet} disabled={people.length === 0 || dates.length === 0}>
-              <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
-              Копировать даты
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={copyCompactSheet}
-              disabled={people.length === 0 || dates.length === 0}
-            >
-              Даты компактно
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setRosterPasteOpen((v) => !v)}>
-              <ClipboardPaste className="h-4 w-4 mr-1" aria-hidden="true" />
-              Загрузить состав
-            </Button>
-            <Button variant="outline" size="sm" onClick={useDefaultRoster}>
-              Шаблон Грозы
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={applyToSentryColumn}
-              disabled={people.length === 0}
-            >
-              <UserCheck className="h-4 w-4 mr-1" aria-hidden="true" />
-              В колонку «Дозоры»
-            </Button>
-          </div>
-        </div>
-        {rosterPasteOpen && (
-          <div className="border-t p-4 space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Скопируйте строки из Google Sheets (вкладка ДОЗОРЫ: имена и ID) или весь лист через
-              Файл → Скачать → CSV и вставьте сюда. По совпадению ID часы уйдут в колонки Активный /
-              Пассивный нужной даты.
-            </p>
-            <Textarea
-              value={rosterPaste}
-              onChange={(e) => setRosterPaste(e.target.value)}
-              placeholder={'Воркотунья\t358173\nГрыжа\t1676369'}
-              className="min-h-24 font-mono text-xs"
-              aria-label="Состав листа ДОЗОРЫ"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => applyRosterPaste(rosterPaste)}>
-                Применить состав
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    const t = await navigator.clipboard.readText()
-                    if (t.trim()) applyRosterPaste(t)
-                    else toast({ title: 'Буфер пуст' })
-                  } catch {
-                    toast({ title: 'Вставьте состав вручную' })
-                  }
-                }}
-              >
-                Из буфера
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetRoster}>
-                Сбросить
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {stats.map((s) => (
           <div key={s.label} className="rounded-lg border p-4 flex items-center gap-3">
             <s.icon
@@ -802,28 +570,21 @@ export default function DozoryTool() {
         </p>
       )}
 
-      {people.length === 0 && !(roster && roster.roster.length > 0 && text.trim()) ? (
+      {people.length === 0 ? (
         <div className="rounded-lg border p-10 text-center">
           <p className="text-sm text-muted-foreground">
             {hydrated && text.trim()
               ? 'Не нашлось ни одного дозора. Проверьте, что в постах есть строки «Дозорный: Имя [ID]», «Время: ЧЧ:ММ — ЧЧ:ММ» или «Общее время:».'
-              : 'Вставьте посты с дозорами — по совпадению ID часы встанут в колонки дат состава листа «ДОЗОРЫ».'}
-          </p>
-        </div>
-      ) : people.length === 0 ? (
-        <div className="rounded-lg border p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            Состав листа загружен ({roster?.roster.length ?? 0}), но постов с дозорами ещё нет —
-            вставьте их сверху.
+              : 'Вставьте список постов сверху — таблица соберётся сама по шаблону недели.'}
           </p>
         </div>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={copySheet} disabled={dates.length === 0}>
+              <Button onClick={copySheet}>
                 <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
-                Копировать даты
+                Скопировать для таблицы
               </Button>
               <Button variant="outline" onClick={copyReport}>
                 <ScrollText className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -835,19 +596,6 @@ export default function DozoryTool() {
               role="group"
               aria-label="Сортировка"
             >
-              <button
-                type="button"
-                aria-pressed={sortMode === 'roster'}
-                onClick={() => setSortMode('roster')}
-                className={cn(
-                  'inline-flex items-center rounded-md px-3 h-8 text-sm font-medium transition-colors',
-                  sortMode === 'roster'
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                Как в листе
-              </button>
               <button
                 type="button"
                 aria-pressed={sortMode === 'alpha'}
@@ -877,6 +625,7 @@ export default function DozoryTool() {
             </div>
           </div>
 
+          {/* Sheet-like matrix — single scroll container, no nested sticky overlaps */}
           <div className="rounded-lg border overflow-hidden">
             <div className="overflow-auto max-h-[70vh]">
               <table
@@ -918,17 +667,14 @@ export default function DozoryTool() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayRows.map((p) => {
-                    const full = people.find((x) => x.extId === p.extId)
-                    const hasWarn = full?.entries.some((e) => e.warning) ?? false
+                  {sortedPeople.map((p) => {
+                    const hasWarn = p.entries.some((e) => e.warning)
                     return (
                       <tr
                         key={p.extId}
                         className={cn(
                           'group border-b hover:bg-muted/40',
-                          hasWarn && 'bg-amber-50/70 dark:bg-amber-950/20',
-                          p.empty && 'opacity-50',
-                          p.extra && 'bg-sky-50/50'
+                          hasWarn && 'bg-amber-50/70 dark:bg-amber-950/20'
                         )}
                       >
                         <td
@@ -936,26 +682,12 @@ export default function DozoryTool() {
                             'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium max-w-[11rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]',
                             hasWarn
                               ? 'bg-amber-50 dark:bg-amber-950'
-                              : p.extra
-                                ? 'bg-sky-50 group-hover:bg-sky-100'
-                                : 'bg-background group-hover:bg-muted'
+                              : 'bg-background group-hover:bg-muted'
                           )}
                         >
                           <button
                             type="button"
-                            onClick={() =>
-                              copyName({
-                                name: p.name,
-                                extId: p.extId,
-                                passiveHours: 0,
-                                activeHours: 0,
-                                hours: 0,
-                                points: p.points,
-                                entries: [],
-                                byDay: p.byDay,
-                                isActivist: p.isActivist,
-                              })
-                            }
+                            onClick={() => copyName(p)}
                             className="group/name inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
                             aria-label={`Скопировать ${p.name} [${p.extId}]`}
                             title="Клик — скопировать «Имя [ID]»"
@@ -968,9 +700,6 @@ export default function DozoryTool() {
                               aria-hidden="true"
                             />
                           </button>
-                          {p.extra && (
-                            <span className="ml-1 text-[10px] font-normal text-sky-700">вне листа</span>
-                          )}
                           {hasWarn && (
                             <AlertTriangle
                               className="inline h-3 w-3 ml-1 text-amber-600 align-middle"
@@ -982,15 +711,14 @@ export default function DozoryTool() {
                           {p.extId}
                         </td>
                         <td className="border-b border-r px-2 py-2 text-center font-semibold tabular-nums whitespace-nowrap">
-                          {p.points > 0 ? fmt(p.points) : p.empty ? '' : '0'}
+                          {fmt(p.points)}
                         </td>
                         <td className="border-b border-r px-2 py-2 text-center text-sm whitespace-nowrap">
                           {p.isActivist ? '1' : '0'}
                         </td>
                         {dates.map((d) => {
-                          const day = p.byDay[d]
-                          const a = day?.active ?? 0
-                          const s = day?.passive ?? 0
+                          const a = dayCell(p, d, 'active')
+                          const s = dayCell(p, d, 'passive')
                           return (
                             <Fragment key={d}>
                               <td
@@ -1024,11 +752,7 @@ export default function DozoryTool() {
                 {fmt(totals.hours)}
               </span>
               <span>Общий балл суммарно: {fmt(totals.points)}</span>
-              <span>
-                ID→колонки: {merged.matched} совпало
-                {merged.extras > 0 ? `, ${merged.extras} вне состава` : ''}
-              </span>
-              <span>Дат в шапке: {dates.join(', ') || '—'}</span>
+              <span>Дат в шапке: {dates.join(', ')}</span>
             </div>
           </div>
         </>

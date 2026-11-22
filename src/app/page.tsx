@@ -237,12 +237,6 @@ export default function Page() {
   }, [load])
 
   useEffect(() => {
-    const onChanged = () => load()
-    window.addEventListener('activists:changed', onChanged)
-    return () => window.removeEventListener('activists:changed', onChanged)
-  }, [load])
-
-  useEffect(() => {
     const def = defaultWeek()
     setBbFrom(localStorage.getItem('bbDateFrom') ?? def.from)
     setBbTo(localStorage.getItem('bbDateTo') ?? def.to)
