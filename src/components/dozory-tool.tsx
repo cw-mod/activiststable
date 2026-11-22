@@ -3,18 +3,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { loadActivists } from '@/lib/store'
 import {
   AlertTriangle,
+  ChevronDown,
   ClipboardPaste,
   Coins,
   Copy,
@@ -329,17 +322,24 @@ async function copyText(t: string): Promise<boolean> {
   }
 }
 
+const COLLAPSE_CHARS = 600
+
 export default function DozoryTool() {
   const { toast } = useToast()
   const [text, setText] = useState('')
   const [sortMode, setSortMode] = useState<'alpha' | 'points'>('alpha')
   const [hydrated, setHydrated] = useState(false)
   const [activistIds, setActivistIds] = useState<Set<string>>(() => new Set())
+  const [inputOpen, setInputOpen] = useState(true)
+  const [userToggledInput, setUserToggledInput] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('dozoryText')
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from localStorage
-    if (saved) setText(saved)
+    if (saved) {
+      setText(saved)
+      if (saved.length >= COLLAPSE_CHARS) setInputOpen(false)
+    }
     try {
       setActivistIds(new Set(loadActivists().map((a) => a.extId)))
     } catch {
@@ -353,6 +353,13 @@ export default function DozoryTool() {
     const t = setTimeout(() => localStorage.setItem('dozoryText', text), 300)
     return () => clearTimeout(t)
   }, [text, hydrated])
+
+  // Auto-collapse when the paste grows large (unless user pinned it open/closed)
+  useEffect(() => {
+    if (!hydrated || userToggledInput) return
+    if (text.length >= COLLAPSE_CHARS) setInputOpen(false)
+    else setInputOpen(true)
+  }, [text.length, hydrated, userToggledInput])
 
   const parsed = useMemo(() => parseDozory(text), [text])
   const dates = useMemo(() => collectDates(parsed.entries), [parsed.entries])
@@ -436,6 +443,7 @@ export default function DozoryTool() {
     try {
       const t = await navigator.clipboard.readText()
       if (t.trim()) {
+        setUserToggledInput(false) // allow auto-collapse for large pastes
         setText(t)
         toast({ title: 'Вставлено из буфера' })
       } else {
@@ -454,15 +462,38 @@ export default function DozoryTool() {
     { icon: AlertTriangle, value: String(totals.warnings), label: 'с сомнениями', warn: totals.warnings > 0 },
   ]
 
-  const minTableWidth = 360 + dates.length * 140
+  const minTableWidth = 420 + dates.length * 128
+  const textChars = text.length
+  const textLines = text ? text.split('\n').length : 0
+
+  function toggleInput(open: boolean) {
+    setUserToggledInput(true)
+    setInputOpen(open)
+  }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <label htmlFor="dozory-input" className="text-sm font-medium">
-            Список постов с дозорами
-          </label>
+      <div className="rounded-lg border overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-muted/30">
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 text-sm font-medium text-left hover:text-foreground"
+            onClick={() => toggleInput(!inputOpen)}
+            aria-expanded={inputOpen}
+            aria-controls="dozory-input-panel"
+          >
+            <ChevronDown
+              className={cn('h-4 w-4 shrink-0 transition-transform', !inputOpen && '-rotate-90')}
+              aria-hidden="true"
+            />
+            <span>Список постов с дозорами</span>
+            {textChars > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {textLines.toLocaleString('ru-RU')} стр. · {textChars.toLocaleString('ru-RU')} симв.
+                {parsed.entries.length > 0 ? ` · ${parsed.entries.length} записей` : ''}
+              </span>
+            )}
+          </button>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={pasteFromBuffer}>
               <ClipboardPaste className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -472,28 +503,46 @@ export default function DozoryTool() {
               variant="outline"
               size="sm"
               className="text-destructive hover:text-destructive"
-              onClick={() => setText('')}
+              onClick={() => {
+                setText('')
+                setUserToggledInput(false)
+                setInputOpen(true)
+              }}
               disabled={!text}
             >
               <Eraser className="h-4 w-4 mr-1" aria-hidden="true" />
               Очистить
             </Button>
+            {!inputOpen && textChars > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => toggleInput(true)}>
+                Развернуть
+              </Button>
+            )}
           </div>
         </div>
-        <Textarea
-          id="dozory-input"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={
-            'Пассивный дозор [09.11.26]\nСектор: Березовая роща\nДозорный: Ревнивенькая [1712482]\nВремя: 01:22 — 02:22\nОбщее время: 1 час'
-          }
-          className="min-h-44 font-mono text-xs"
-          aria-label="Список постов с дозорами"
-        />
-        <p className="text-xs text-muted-foreground">
-          Ставки: пассивный дозор — 1 балл за час (30 мин = 0,5) · активный — 1,5 балла за час (30 мин =
-          0,75). Таблица как в шаблоне: даты сверху, под каждой — Активный / Пассивный (часы).
-        </p>
+
+        {inputOpen ? (
+          <div id="dozory-input-panel" className="p-4 pt-3 space-y-3 border-t">
+            <Textarea
+              id="dozory-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                'Пассивный дозор [09.11.26]\nСектор: Березовая роща\nДозорный: Ревнивенькая [1712482]\nВремя: 01:22 — 02:22\nОбщее время: 1 час'
+              }
+              className="min-h-28 max-h-48 overflow-y-auto font-mono text-xs resize-y"
+              aria-label="Список постов с дозорами"
+            />
+            <p className="text-xs text-muted-foreground">
+              Ставки: пассивный — 1 балл/час · активный — 1,5 балла/час. Большой текст сворачивается
+              автоматически — таблица остаётся на виду.
+            </p>
+          </div>
+        ) : (
+          <div id="dozory-input-panel" className="px-4 py-2.5 border-t text-xs text-muted-foreground">
+            Поле свёрнуто. Вставка из буфера работает и так; чтобы править текст — нажмите «Развернуть».
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -576,59 +625,59 @@ export default function DozoryTool() {
             </div>
           </div>
 
-          {/* Sheet-like matrix: Name | ID | Общий балл | Активист | date→Active/Passive */}
+          {/* Sheet-like matrix — single scroll container, no nested sticky overlaps */}
           <div className="rounded-lg border overflow-hidden">
-            <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
-              <Table style={{ minWidth: minTableWidth }}>
-                <TableHeader className="sticky top-0 bg-background z-10">
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead
-                      rowSpan={2}
-                      className="align-bottom border-r min-w-[8rem] sticky left-0 bg-muted/50 z-20"
-                    >
+            <div className="overflow-auto max-h-[70vh]">
+              <table
+                className="w-full caption-bottom text-sm border-separate border-spacing-0"
+                style={{ minWidth: minTableWidth }}
+              >
+                <thead>
+                  <tr className="bg-muted">
+                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[9rem] max-w-[11rem]">
                       Имя CatWar
-                    </TableHead>
-                    <TableHead rowSpan={2} className="align-bottom border-r min-w-[5rem]">
+                    </th>
+                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[5.5rem]">
                       ID
-                    </TableHead>
-                    <TableHead rowSpan={2} className="align-bottom text-center border-r min-w-[4.5rem]">
-                      Общий балл
-                    </TableHead>
-                    <TableHead rowSpan={2} className="align-bottom text-center border-r min-w-[4.5rem]">
+                    </th>
+                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight">
+                      Общий
+                      <br />
+                      балл
+                    </th>
+                    <th className="sticky top-0 z-20 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem]">
                       Активист
-                    </TableHead>
-                    {dates.map((d) => (
-                      <TableHead
-                        key={d}
-                        colSpan={2}
-                        className="text-center border-r font-mono font-semibold"
-                      >
-                        {d}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    </th>
                     {dates.map((d) => (
                       <Fragment key={d}>
-                        <TableHead className="text-center text-[11px] font-medium text-emerald-800 border-r-0 min-w-[4.5rem]">
-                          Активный
-                        </TableHead>
-                        <TableHead className="text-center text-[11px] font-medium text-muted-foreground border-r min-w-[4.5rem]">
-                          Пассивный
-                        </TableHead>
+                        <th className="sticky top-0 z-20 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
+                          <div className="font-mono font-semibold text-sm leading-none">{d}</div>
+                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
+                            Актив
+                          </div>
+                        </th>
+                        <th className="sticky top-0 z-20 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
+                          <div className="font-mono font-semibold text-sm leading-none">{d}</div>
+                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Пассив
+                          </div>
+                        </th>
                       </Fragment>
                     ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+                  </tr>
+                </thead>
+                <tbody>
                   {sortedPeople.map((p) => {
                     const hasWarn = p.entries.some((e) => e.warning)
                     return (
-                      <TableRow
+                      <tr
                         key={p.extId}
-                        className={cn(hasWarn && 'bg-amber-50/60 dark:bg-amber-950/20')}
+                        className={cn(
+                          'border-b hover:bg-muted/40',
+                          hasWarn && 'bg-amber-50/70 dark:bg-amber-950/20'
+                        )}
                       >
-                        <TableCell className="font-medium border-r sticky left-0 bg-background z-10">
+                        <td className="border-b border-r px-2 py-2 font-medium max-w-[11rem]">
                           <button
                             type="button"
                             onClick={() => copyName(p)}
@@ -646,49 +695,49 @@ export default function DozoryTool() {
                           </button>
                           {hasWarn && (
                             <AlertTriangle
-                              className="inline h-3 w-3 ml-1 text-amber-600"
+                              className="inline h-3 w-3 ml-1 text-amber-600 align-middle"
                               aria-label="Есть расхождения во времени"
                             />
                           )}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground border-r">
+                        </td>
+                        <td className="border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
                           {p.extId}
-                        </TableCell>
-                        <TableCell className="text-center font-semibold border-r">
+                        </td>
+                        <td className="border-b border-r px-2 py-2 text-center font-semibold tabular-nums whitespace-nowrap">
                           {fmt(p.points)}
-                        </TableCell>
-                        <TableCell className="text-center text-sm border-r">
+                        </td>
+                        <td className="border-b border-r px-2 py-2 text-center text-sm whitespace-nowrap">
                           {p.isActivist ? '1' : '0'}
-                        </TableCell>
+                        </td>
                         {dates.map((d) => {
                           const a = dayCell(p, d, 'active')
                           const s = dayCell(p, d, 'passive')
                           return (
                             <Fragment key={d}>
-                              <TableCell
+                              <td
                                 className={cn(
-                                  'text-center text-sm tabular-nums',
-                                  a > 0 && 'bg-emerald-50/80 font-medium text-emerald-900'
+                                  'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap',
+                                  a > 0 && 'bg-emerald-50 font-medium text-emerald-900'
                                 )}
                               >
                                 {a > 0 ? fmt(a) : ''}
-                              </TableCell>
-                              <TableCell
+                              </td>
+                              <td
                                 className={cn(
-                                  'text-center text-sm tabular-nums border-r',
-                                  s > 0 && 'bg-muted/50 font-medium'
+                                  'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap',
+                                  s > 0 && 'bg-stone-100 font-medium'
                                 )}
                               >
                                 {s > 0 ? fmt(s) : ''}
-                              </TableCell>
+                              </td>
                             </Fragment>
                           )
                         })}
-                      </TableRow>
+                      </tr>
                     )
                   })}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
             <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
               <span>
@@ -696,7 +745,7 @@ export default function DozoryTool() {
                 {fmt(totals.hours)}
               </span>
               <span>Общий балл суммарно: {fmt(totals.points)}</span>
-              <span>Дат в шапке: {dates.map((d) => d).join(', ')}</span>
+              <span>Дат в шапке: {dates.join(', ')}</span>
             </div>
           </div>
         </>
