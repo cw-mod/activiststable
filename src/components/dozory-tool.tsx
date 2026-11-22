@@ -639,10 +639,10 @@ export default function DozoryTool() {
               >
                 <thead>
                   <tr className="bg-muted">
-                    <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[9rem] max-w-[11rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
+                    <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[9rem] min-w-[9rem] max-w-[9rem]">
                       Имя CatWar
                     </th>
-                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium min-w-[5.5rem]">
+                    <th className="sticky top-0 left-[9rem] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
                       ID
                     </th>
                     <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight">
@@ -684,7 +684,7 @@ export default function DozoryTool() {
                       >
                         <td
                           className={cn(
-                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium max-w-[11rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]',
+                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium w-[9rem] min-w-[9rem] max-w-[9rem]',
                             hasWarn
                               ? 'bg-amber-50 dark:bg-amber-950'
                               : 'bg-background group-hover:bg-muted'
@@ -712,7 +712,14 @@ export default function DozoryTool() {
                             />
                           )}
                         </td>
-                        <td className="border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                        <td
+                          className={cn(
+                            'sticky left-[9rem] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]',
+                            hasWarn
+                              ? 'bg-amber-50 dark:bg-amber-950'
+                              : 'bg-background group-hover:bg-muted'
+                          )}
+                        >
                           <button
                             type="button"
                             onClick={() => copyId(p.extId)}
