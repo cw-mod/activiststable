@@ -630,7 +630,7 @@ export default function Page() {
               type="button"
               role="tab"
               aria-selected={view === 'activists'}
-              onClick={() => setView('activists')}
+              onClick={() => selectView('activists')}
               className={cn(
                 'inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-md px-4 h-9 text-sm font-medium transition-colors',
                 view === 'activists' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
@@ -643,7 +643,7 @@ export default function Page() {
               type="button"
               role="tab"
               aria-selected={view === 'dozory'}
-              onClick={() => setView('dozory')}
+              onClick={() => selectView('dozory')}
               className={cn(
                 'inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-md px-4 h-9 text-sm font-medium transition-colors',
                 view === 'dozory' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
