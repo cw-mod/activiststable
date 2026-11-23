@@ -675,21 +675,24 @@ export default function DozoryTool() {
                   {sortedPeople.map((p, idx) => {
                     const hasWarn = p.entries.some((e) => e.warning)
                     const stripe = idx % 2 === 1
+                    // Very pale zebra; cell hover deepens pink locally
                     const rowBg = hasWarn
                       ? 'bg-amber-50/70 dark:bg-amber-950/20'
                       : stripe
-                        ? 'bg-rose-50'
+                        ? 'bg-[#fff5f7]'
                         : 'bg-background'
                     const stickyBg = hasWarn
                       ? 'bg-amber-50 dark:bg-amber-950'
                       : stripe
-                        ? 'bg-rose-50'
-                        : 'bg-background'
+                        ? 'bg-[#fff5f7] hover:bg-rose-100'
+                        : 'bg-background hover:bg-rose-50'
+                    const cellBase =
+                      'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap transition-colors'
                     return (
                       <tr key={p.extId} className={cn('group border-b', rowBg)}>
                         <td
                           className={cn(
-                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium w-[9rem] min-w-[9rem] max-w-[9rem]',
+                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium w-[9rem] min-w-[9rem] max-w-[9rem] transition-colors',
                             stickyBg
                           )}
                         >
@@ -717,7 +720,7 @@ export default function DozoryTool() {
                         </td>
                         <td
                           className={cn(
-                            'sticky left-[9rem] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]',
+                            'sticky left-[9rem] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] transition-colors',
                             stickyBg
                           )}
                         >
@@ -735,10 +738,21 @@ export default function DozoryTool() {
                             />
                           </button>
                         </td>
-                        <td className="border-b border-r px-2 py-2 text-center font-semibold tabular-nums whitespace-nowrap">
+                        <td
+                          className={cn(
+                            cellBase,
+                            'font-semibold',
+                            stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                          )}
+                        >
                           {fmt(p.points)}
                         </td>
-                        <td className="border-b border-r px-2 py-2 text-center text-sm whitespace-nowrap">
+                        <td
+                          className={cn(
+                            cellBase,
+                            stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                          )}
+                        >
                           {p.isActivist ? '1' : '0'}
                         </td>
                         {dates.map((d) => {
@@ -748,16 +762,24 @@ export default function DozoryTool() {
                             <Fragment key={d}>
                               <td
                                 className={cn(
-                                  'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap',
-                                  a > 0 && 'bg-rose-200/80 font-medium text-rose-950'
+                                  cellBase,
+                                  a > 0
+                                    ? 'bg-rose-50/80 font-medium text-rose-900 hover:bg-rose-200'
+                                    : stripe
+                                      ? 'hover:bg-rose-100'
+                                      : 'hover:bg-rose-50'
                                 )}
                               >
                                 {a > 0 ? fmt(a) : ''}
                               </td>
                               <td
                                 className={cn(
-                                  'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap',
-                                  s > 0 && 'bg-rose-100 font-medium text-rose-900'
+                                  cellBase,
+                                  s > 0
+                                    ? 'bg-[#fff0f3] font-medium text-rose-800 hover:bg-rose-200/70'
+                                    : stripe
+                                      ? 'hover:bg-rose-100'
+                                      : 'hover:bg-rose-50'
                                 )}
                               >
                                 {s > 0 ? fmt(s) : ''}
