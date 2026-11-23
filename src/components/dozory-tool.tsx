@@ -657,7 +657,7 @@ export default function DozoryTool() {
                       <Fragment key={d}>
                         <th className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
                           <div className="font-mono font-semibold text-sm leading-none">{d}</div>
-                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
+                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-rose-800">
                             Актив
                           </div>
                         </th>
@@ -678,18 +678,15 @@ export default function DozoryTool() {
                     const rowBg = hasWarn
                       ? 'bg-amber-50/70 dark:bg-amber-950/20'
                       : stripe
-                        ? 'bg-rose-50/90'
+                        ? 'bg-rose-50'
                         : 'bg-background'
                     const stickyBg = hasWarn
                       ? 'bg-amber-50 dark:bg-amber-950'
                       : stripe
-                        ? 'bg-rose-50 group-hover:bg-rose-100'
-                        : 'bg-background group-hover:bg-muted'
+                        ? 'bg-rose-50'
+                        : 'bg-background'
                     return (
-                      <tr
-                        key={p.extId}
-                        className={cn('group border-b hover:bg-rose-100/50', rowBg)}
-                      >
+                      <tr key={p.extId} className={cn('group border-b', rowBg)}>
                         <td
                           className={cn(
                             'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium w-[9rem] min-w-[9rem] max-w-[9rem]',
@@ -699,7 +696,7 @@ export default function DozoryTool() {
                           <button
                             type="button"
                             onClick={() => copyName(p)}
-                            className="group/name inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
+                            className="group/name inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-rose-500"
                             aria-label={`Скопировать ${p.name} [${p.extId}]`}
                             title="Клик — скопировать «Имя [ID]»"
                           >
@@ -727,7 +724,7 @@ export default function DozoryTool() {
                           <button
                             type="button"
                             onClick={() => copyId(p.extId)}
-                            className="group inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600"
+                            className="group inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground transition-colors hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-rose-500"
                             aria-label={`Скопировать ID ${p.extId}`}
                             title="Клик — скопировать только ID"
                           >
@@ -752,7 +749,7 @@ export default function DozoryTool() {
                               <td
                                 className={cn(
                                   'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap',
-                                  a > 0 && 'bg-emerald-50 font-medium text-emerald-900'
+                                  a > 0 && 'bg-rose-200/80 font-medium text-rose-950'
                                 )}
                               >
                                 {a > 0 ? fmt(a) : ''}
@@ -760,7 +757,7 @@ export default function DozoryTool() {
                               <td
                                 className={cn(
                                   'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap',
-                                  s > 0 && 'bg-stone-100 font-medium'
+                                  s > 0 && 'bg-rose-100 font-medium text-rose-900'
                                 )}
                               >
                                 {s > 0 ? fmt(s) : ''}
