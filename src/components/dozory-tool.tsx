@@ -4,7 +4,6 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
-import { loadActivists } from '@/lib/store'
 import {
   AlertTriangle,
   ChevronDown,
@@ -13,7 +12,6 @@ import {
   Copy,
   Eraser,
   ListChecks,
-  ScrollText,
   Sheet,
   Timer,
   UserRound,
@@ -22,6 +20,8 @@ import { cn } from '@/lib/utils'
 
 const PASSIVE_RATE = 1
 const ACTIVE_RATE = 1.5
+/** «Активист» в таблице дозоров — от стольки часов суммарно */
+const ACTIVIST_MIN_HOURS = 10
 
 type WatchKind = 'passive' | 'active'
 
@@ -78,10 +78,6 @@ function plural(n: number, one: string, few: string, many: string): string {
 
 function hoursWord(n: number): string {
   return plural(n, 'час', 'часа', 'часов')
-}
-
-function pointsWord(n: number): string {
-  return plural(n, 'балл', 'балла', 'баллов')
 }
 
 /** "16.11.26" / "16.11.2026" → "16.11" */
@@ -210,7 +206,7 @@ function collectDates(entries: WatchEntry[]): string[] {
     .map(([short]) => short)
 }
 
-function aggregate(entries: WatchEntry[], activistIds: Set<string>): Person[] {
+function aggregate(entries: WatchEntry[]): Person[] {
   const map = new Map<string, Person>()
   for (const e of entries) {
     let p = map.get(e.extId)
@@ -224,7 +220,7 @@ function aggregate(entries: WatchEntry[], activistIds: Set<string>): Person[] {
         points: 0,
         entries: [],
         byDay: {},
-        isActivist: activistIds.has(e.extId),
+        isActivist: false,
       }
       map.set(e.extId, p)
     }
@@ -232,6 +228,7 @@ function aggregate(entries: WatchEntry[], activistIds: Set<string>): Person[] {
     else p.activeHours = round2(p.activeHours + e.hours)
     p.hours = round2(p.passiveHours + p.activeHours)
     p.points = round2(p.points + e.points)
+    p.isActivist = p.hours >= ACTIVIST_MIN_HOURS
     p.entries.push(e)
 
     const day = shortDate(e.date)
@@ -275,32 +272,6 @@ function buildSheetTsv(people: Person[], dates: string[]): string {
   return [r1.join('\t'), r2.join('\t'), ...body].join('\n')
 }
 
-function buildReport(people: Person[], dates: string[]): string {
-  const lines = people.map((p) => {
-    const parts: string[] = []
-    if (p.passiveHours > 0) parts.push(`пассив ${fmt(p.passiveHours)}`)
-    if (p.activeHours > 0) parts.push(`актив ${fmt(p.activeHours)}`)
-    const detail = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-    const dayBits = dates
-      .map((d) => {
-        const a = dayCell(p, d, 'active')
-        const s = dayCell(p, d, 'passive')
-        if (a <= 0 && s <= 0) return null
-        const bits: string[] = []
-        if (a > 0) bits.push(`акт ${fmt(a)}`)
-        if (s > 0) bits.push(`пасс ${fmt(s)}`)
-        return `${d}: ${bits.join(', ')}`
-      })
-      .filter(Boolean)
-    const datesPart = dayBits.length > 0 ? ` · ${dayBits.join('; ')}` : ''
-    return `${p.name} [${p.extId}] — ${fmt(p.points)} ${pointsWord(p.points)}${detail}${datesPart}`
-  })
-  const totP = round2(people.reduce((s, p) => s + p.points, 0))
-  const totH = round2(people.reduce((s, p) => s + p.hours, 0))
-  lines.push(`Итого: ${fmt(totH)} ${hoursWord(totH)} — ${fmt(totP)} ${pointsWord(totP)}`)
-  return lines.join('\n')
-}
-
 async function copyText(t: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(t)
@@ -329,7 +300,6 @@ export default function DozoryTool() {
   const [text, setText] = useState('')
   const [sortMode, setSortMode] = useState<'alpha' | 'points'>('alpha')
   const [hydrated, setHydrated] = useState(false)
-  const [activistIds, setActivistIds] = useState<Set<string>>(() => new Set())
   const [inputOpen, setInputOpen] = useState(true)
   const [userToggledInput, setUserToggledInput] = useState(false)
 
@@ -339,11 +309,6 @@ export default function DozoryTool() {
     if (saved) {
       setText(saved)
       if (saved.length >= COLLAPSE_CHARS) setInputOpen(false)
-    }
-    try {
-      setActivistIds(new Set(loadActivists().map((a) => a.extId)))
-    } catch {
-      /* ignore */
     }
     setHydrated(true)
   }, [])
@@ -363,10 +328,7 @@ export default function DozoryTool() {
 
   const parsed = useMemo(() => parseDozory(text), [text])
   const dates = useMemo(() => collectDates(parsed.entries), [parsed.entries])
-  const people = useMemo(
-    () => aggregate(parsed.entries, activistIds),
-    [parsed.entries, activistIds]
-  )
+  const people = useMemo(() => aggregate(parsed.entries), [parsed.entries])
 
   const sortedPeople = useMemo(() => {
     const arr = [...people]
@@ -423,15 +385,6 @@ export default function DozoryTool() {
     toast(ok ? { title: 'ID скопирован', description: extId } : { title: 'Не удалось скопировать' })
   }
 
-  async function copyReport() {
-    const ok = await copyText(buildReport(sortedPeople, dates))
-    toast(
-      ok
-        ? { title: 'Разбалловка скопирована', description: `Участников: ${sortedPeople.length}` }
-        : { title: 'Не удалось скопировать' }
-    )
-  }
-
   async function copySheet() {
     const ok = await copyText(buildSheetTsv(sortedPeople, dates))
     toast(
@@ -464,7 +417,14 @@ export default function DozoryTool() {
     { icon: UserRound, value: String(people.length), label: 'участников', warn: false },
     { icon: Timer, value: fmt(totals.hours), label: 'часов всего', warn: false },
     { icon: Coins, value: fmt(totals.points), label: 'баллов всего', warn: false },
-    { icon: AlertTriangle, value: String(totals.warnings), label: 'с сомнениями', warn: totals.warnings > 0 },
+    {
+      icon: AlertTriangle,
+      value: String(totals.warnings),
+      label: 'спорное время',
+      warn: totals.warnings > 0,
+      title:
+        'Посты, где «Общее время» не совпадает с интервалом «Время: ЧЧ:ММ — ЧЧ:ММ» — стоит перепроверить',
+    },
   ]
 
   // colgroup: 144 + 88 + 80 + 80 + dates * (68+68)
@@ -553,7 +513,11 @@ export default function DozoryTool() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-lg border p-4 flex items-center gap-3">
+          <div
+            key={s.label}
+            className="rounded-lg border p-4 flex items-center gap-3"
+            title={'title' in s ? s.title : undefined}
+          >
             <s.icon
               className={cn('h-5 w-5 shrink-0', s.warn ? 'text-amber-600' : 'text-muted-foreground')}
               aria-hidden="true"
@@ -591,10 +555,6 @@ export default function DozoryTool() {
               <Button onClick={copySheet}>
                 <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
                 Скопировать для таблицы
-              </Button>
-              <Button variant="outline" onClick={copyReport}>
-                <ScrollText className="h-4 w-4 mr-1" aria-hidden="true" />
-                Разбалловка текстом
               </Button>
             </div>
             <div
@@ -675,6 +635,7 @@ export default function DozoryTool() {
                     <th
                       rowSpan={2}
                       className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
+                      title="1, если суммарно ≥ 10 часов дозоров"
                     >
                       Активист
                     </th>
