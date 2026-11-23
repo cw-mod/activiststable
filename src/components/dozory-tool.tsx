@@ -134,6 +134,22 @@ function cleanText(s: string): string {
     .trim()
 }
 
+/**
+ * Округление длительности до 0 / 0,5 / 1 / 1,5 … часов.
+ * < 30 мин → 0 (не считается).
+ * Дальше шаги по 30 мин; остаток ≥ 25 мин → следующий шаг.
+ * Примеры: 20→0, 40→0,5, 50→0,5, 85→1,5.
+ */
+function roundWatchHours(hours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0
+  const minutes = hours * 60
+  if (minutes < 30) return 0
+  const whole = Math.floor(minutes / 30)
+  const rem = minutes - whole * 30
+  const blocks = rem >= 25 - 1e-9 ? whole + 1 : whole
+  return round2(blocks * 0.5)
+}
+
 function parseDeclaredDuration(s: string): number | null {
   const t = cleanText(s).toLowerCase()
   // «1 час 30 минут» / «1ч 30 мин» / «3 часа 30 минут»
@@ -145,21 +161,21 @@ function parseDeclaredDuration(s: string): number | null {
     const h = Number.parseFloat(compound[1].replace(',', '.'))
     const mins = Number.parseFloat(compound[2].replace(',', '.'))
     if (Number.isFinite(h) && Number.isFinite(mins) && h >= 0 && mins >= 0) {
-      return round2(h + mins / 60)
+      return roundWatchHours(h + mins / 60)
     }
   }
   const m = t.match(/(\d+(?:[.,]\d+)?)\s*(часов|часа|час|ч|мин\w*)/)
   if (!m) return null
   const n = Number.parseFloat(m[1].replace(',', '.'))
   if (!Number.isFinite(n) || n < 0) return null
-  if (m[2].startsWith('мин')) return round2(n / 60)
-  return n
+  if (m[2].startsWith('мин')) return roundWatchHours(n / 60)
+  return roundWatchHours(n)
 }
 
 function timeRangeHours(sh: number, sm: number, eh: number, em: number): number {
   let minutes = eh * 60 + em - (sh * 60 + sm)
   if (minutes < 0) minutes += 24 * 60
-  return round2(minutes / 60)
+  return roundWatchHours(minutes / 60)
 }
 
 function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
@@ -213,6 +229,12 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
       ? `${timeM[1].padStart(2, '0')}:${timeM[2]} — ${timeM[3].padStart(2, '0')}:${timeM[4]}`
       : null
 
+    // Интервал короче 30 мин после округления — дозор не считается
+    if (computed != null && computed <= 0) {
+      skipped++
+      continue
+    }
+
     let warning: string | null = null
     if (declared != null && computed != null && Math.abs(declared - computed) > 0.05) {
       const interval = timeLabel ?? '—'
@@ -222,7 +244,7 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
 
     // По умолчанию приоритет у интервала «Время», если он есть
     const picked = pickHours(computed, declared, 'interval')
-    if (!picked) {
+    if (!picked || picked.hours <= 0) {
       skipped++
       continue
     }
@@ -860,8 +882,8 @@ export default function DozoryTool() {
               aria-label="Список постов с дозорами"
             />
             <p className="text-xs text-muted-foreground">
-              В ячейках дат — только часы. Баллы считаются отдельно: пассив ×1, актив ×1,5. Большой
-              текст сворачивается автоматически — таблица остаётся на виду.
+              Часы округляются до 0 / 0,5 / 1 / 1,5…: меньше 30 мин не считается (напр. 12:40–13:00).
+              Баллы: пассив ×1, актив ×1,5. Большой текст сворачивается — таблица остаётся на виду.
             </p>
           </div>
         ) : (
