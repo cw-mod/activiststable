@@ -25,11 +25,19 @@ const ACTIVIST_MIN_HOURS = 10
 
 type WatchKind = 'passive' | 'active'
 
+type HoursSource = 'interval' | 'declared'
+
 type WatchEntry = {
   kind: WatchKind
   date: string
   name: string
   extId: string
+  /** Часы из интервала «Время: ЧЧ:ММ — ЧЧ:ММ» */
+  intervalHours: number | null
+  /** Часы из «Общее время» */
+  declaredHours: number | null
+  /** Что сейчас в расчёте */
+  hoursSource: HoursSource
   hours: number
   points: number
   sector: string
@@ -38,6 +46,24 @@ type WatchEntry = {
   /** Текст «Общее время: …» из поста, если был */
   declaredLabel: string | null
   warning: string | null
+}
+
+function entryKey(e: Pick<WatchEntry, 'extId' | 'date' | 'kind' | 'timeLabel' | 'declaredLabel' | 'sector'>): string {
+  return [e.extId, e.date, e.kind, e.timeLabel ?? '', e.declaredLabel ?? '', e.sector].join('|')
+}
+
+function pickHours(
+  intervalHours: number | null,
+  declaredHours: number | null,
+  prefer: HoursSource = 'interval'
+): { hours: number; source: HoursSource } | null {
+  if (intervalHours == null && declaredHours == null) return null
+  if (intervalHours != null && declaredHours != null) {
+    const source = prefer
+    return { hours: source === 'interval' ? intervalHours : declaredHours, source }
+  }
+  if (intervalHours != null) return { hours: intervalHours, source: 'interval' }
+  return { hours: declaredHours as number, source: 'declared' }
 }
 
 /** hours by shortDate → kind */
@@ -187,18 +213,16 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
       ? `${timeM[1].padStart(2, '0')}:${timeM[2]} — ${timeM[3].padStart(2, '0')}:${timeM[4]}`
       : null
 
-    let hours: number
     let warning: string | null = null
-    if (declared != null) {
-      hours = declared
-      if (computed != null && Math.abs(declared - computed) > 0.05) {
-        const interval = timeLabel ?? '—'
-        const declaredShown = declaredRaw ?? `${fmt(declared)} ${hoursWord(declared)}`
-        warning = `в отчёте «Общее время: ${declaredShown}» (= ${fmt(declared)} ${hoursWord(declared)}), а интервал «Время: ${interval}» = ${fmt(computed)} ${hoursWord(computed)} — что верно?`
-      }
-    } else if (computed != null) {
-      hours = computed
-    } else {
+    if (declared != null && computed != null && Math.abs(declared - computed) > 0.05) {
+      const interval = timeLabel ?? '—'
+      const declaredShown = declaredRaw ?? `${fmt(declared)} ${hoursWord(declared)}`
+      warning = `в отчёте «Общее время: ${declaredShown}» (= ${fmt(declared)} ${hoursWord(declared)}), а интервал «Время: ${interval}» = ${fmt(computed)} ${hoursWord(computed)}`
+    }
+
+    // По умолчанию приоритет у интервала «Время», если он есть
+    const picked = pickHours(computed, declared, 'interval')
+    if (!picked) {
       skipped++
       continue
     }
@@ -208,8 +232,11 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
       date,
       name,
       extId,
-      hours,
-      points: round2(hours * (kind === 'passive' ? PASSIVE_RATE : ACTIVE_RATE)),
+      intervalHours: computed,
+      declaredHours: declared,
+      hoursSource: picked.source,
+      hours: picked.hours,
+      points: round2(picked.hours * (kind === 'passive' ? PASSIVE_RATE : ACTIVE_RATE)),
       sector,
       timeLabel,
       declaredLabel: declaredRaw,
@@ -217,6 +244,23 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
     })
   }
   return { entries, skipped }
+}
+
+function applyHourPicks(
+  entries: WatchEntry[],
+  picks: Record<string, HoursSource>
+): WatchEntry[] {
+  return entries.map((e) => {
+    const prefer = picks[entryKey(e)] ?? 'interval'
+    const picked = pickHours(e.intervalHours, e.declaredHours, prefer)
+    if (!picked) return e
+    return {
+      ...e,
+      hoursSource: picked.source,
+      hours: picked.hours,
+      points: round2(picked.hours * (e.kind === 'passive' ? PASSIVE_RATE : ACTIVE_RATE)),
+    }
+  })
 }
 
 function collectDates(entries: WatchEntry[]): string[] {
@@ -592,6 +636,8 @@ export default function DozoryTool() {
   const [hydrated, setHydrated] = useState(false)
   const [inputOpen, setInputOpen] = useState(true)
   const [userToggledInput, setUserToggledInput] = useState(false)
+  /** Ручной выбор: интервал «Время» или «Общее время» */
+  const [hourPicks, setHourPicks] = useState<Record<string, HoursSource>>({})
 
   useEffect(() => {
     const saved = localStorage.getItem('dozoryText')
@@ -599,6 +645,15 @@ export default function DozoryTool() {
     if (saved) {
       setText(saved)
       if (saved.length >= COLLAPSE_CHARS) setInputOpen(false)
+    }
+    const savedPicks = localStorage.getItem('dozoryHourPicks')
+    if (savedPicks) {
+      try {
+        const parsedPicks = JSON.parse(savedPicks) as Record<string, HoursSource>
+        if (parsedPicks && typeof parsedPicks === 'object') setHourPicks(parsedPicks)
+      } catch {
+        /* ignore */
+      }
     }
     setHydrated(true)
   }, [])
@@ -609,6 +664,11 @@ export default function DozoryTool() {
     return () => clearTimeout(t)
   }, [text, hydrated])
 
+  useEffect(() => {
+    if (!hydrated) return
+    localStorage.setItem('dozoryHourPicks', JSON.stringify(hourPicks))
+  }, [hourPicks, hydrated])
+
   // Auto-collapse when the paste grows large (unless user pinned it open/closed)
   useEffect(() => {
     if (!hydrated || userToggledInput) return
@@ -617,8 +677,12 @@ export default function DozoryTool() {
   }, [text.length, hydrated, userToggledInput])
 
   const parsed = useMemo(() => parseDozory(text), [text])
-  const dates = useMemo(() => collectDates(parsed.entries), [parsed.entries])
-  const people = useMemo(() => aggregate(parsed.entries), [parsed.entries])
+  const entries = useMemo(
+    () => applyHourPicks(parsed.entries, hourPicks),
+    [parsed.entries, hourPicks]
+  )
+  const dates = useMemo(() => collectDates(entries), [entries])
+  const people = useMemo(() => aggregate(entries), [entries])
 
   const sortedPeople = useMemo(() => {
     const arr = [...people]
@@ -645,7 +709,7 @@ export default function DozoryTool() {
     let passive = 0
     let active = 0
     let warnings = 0
-    for (const e of parsed.entries) {
+    for (const e of entries) {
       h += e.hours
       pts += e.points
       if (e.kind === 'passive') passive += e.hours
@@ -659,7 +723,13 @@ export default function DozoryTool() {
       active: round2(active),
       warnings,
     }
-  }, [parsed.entries])
+  }, [entries])
+
+  const disputed = useMemo(() => entries.filter((e) => e.warning), [entries])
+
+  function setEntryHours(e: WatchEntry, source: HoursSource) {
+    setHourPicks((prev) => ({ ...prev, [entryKey(e)]: source }))
+  }
 
   async function copyName(p: Person) {
     const ok = await copyText(`${p.name} [${p.extId}]`)
@@ -702,13 +772,8 @@ export default function DozoryTool() {
     }
   }
 
-  const disputed = useMemo(
-    () => parsed.entries.filter((e) => e.warning),
-    [parsed.entries]
-  )
-
   const stats = [
-    { icon: ListChecks, value: String(parsed.entries.length), label: 'записей', warn: false },
+    { icon: ListChecks, value: String(entries.length), label: 'записей', warn: false },
     { icon: UserRound, value: String(people.length), label: 'участников', warn: false },
     { icon: Timer, value: fmt(totals.hours), label: 'часов всего', warn: false },
     { icon: Coins, value: fmt(totals.points), label: 'баллов всего', warn: false },
@@ -718,7 +783,7 @@ export default function DozoryTool() {
       label: 'спорное время',
       warn: totals.warnings > 0,
       title:
-        '«Общее время» в посте не совпадает с длиной интервала «Время: ЧЧ:ММ — ЧЧ:ММ». В расчёт берём «Общее время» — сверьте, какая цифра верная.',
+        '«Общее время» не совпадает с интервалом «Время». По умолчанию считаем интервал; можно переключить вручную.',
     },
   ]
 
@@ -839,26 +904,55 @@ export default function DozoryTool() {
         <div className="rounded-lg border border-amber-300/80 bg-amber-50/80 px-4 py-3 space-y-2">
           <p className="text-sm font-medium text-amber-950 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-            Спорное время — перепроверьте эти посты
+            Спорное время — выберите, что считать
           </p>
           <p className="text-xs text-amber-900/90 leading-relaxed">
-            В расчёт сейчас идёт строка «Общее время». Если она ошибочна, а верный интервал в
-            «Время: ЧЧ:ММ — ЧЧ:ММ» — поправьте «Общее время» в исходном посте (или наоборот).
-            Пример: «Общее время: 30 минут», а «Время: 09:03 — 10:03» — это уже 1 час.
+            По умолчанию в расчёт идёт интервал «Время: ЧЧ:ММ — ЧЧ:ММ». Если вернее строка «Общее
+            время» — нажмите её кнопку. Пример: «Время: 09:03 — 10:03» = 1 час, а «Общее время: 30
+            минут» — можно переключить вручную.
           </p>
           <ul className="space-y-2 text-xs text-amber-950">
-            {disputed.map((e, i) => (
-              <li
-                key={`${e.extId}-${e.date}-${e.kind}-${i}`}
-                className="rounded-md border border-amber-200/80 bg-background/70 px-3 py-2"
-              >
-                <div className="font-medium">
-                  {e.name} [{e.extId}] · {shortDate(e.date)} ·{' '}
-                  {e.kind === 'active' ? 'актив' : 'пассив'}
-                </div>
-                <div className="mt-0.5 text-amber-900/90">{e.warning}</div>
-              </li>
-            ))}
+            {disputed.map((e, i) => {
+              const usingInterval = e.hoursSource === 'interval'
+              return (
+                <li
+                  key={`${entryKey(e)}-${i}`}
+                  className="rounded-md border border-amber-200/80 bg-background/70 px-3 py-2 space-y-2"
+                >
+                  <div className="font-medium">
+                    {e.name} [{e.extId}] · {shortDate(e.date)} ·{' '}
+                    {e.kind === 'active' ? 'актив' : 'пассив'}
+                  </div>
+                  <div className="text-amber-900/90">{e.warning}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={usingInterval ? 'default' : 'outline'}
+                      className="h-7 text-xs"
+                      disabled={e.intervalHours == null}
+                      onClick={() => setEntryHours(e, 'interval')}
+                    >
+                      Интервал
+                      {e.intervalHours != null ? `: ${fmt(e.intervalHours)} ч` : ''}
+                      {usingInterval ? ' ✓' : ''}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={!usingInterval ? 'default' : 'outline'}
+                      className="h-7 text-xs"
+                      disabled={e.declaredHours == null}
+                      onClick={() => setEntryHours(e, 'declared')}
+                    >
+                      Общее время
+                      {e.declaredHours != null ? `: ${fmt(e.declaredHours)} ч` : ''}
+                      {!usingInterval ? ' ✓' : ''}
+                    </Button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}
