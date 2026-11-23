@@ -318,18 +318,24 @@ function DozoryMatrix({
               <th className="sticky top-0 left-[144px] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
                 ID
               </th>
-              <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
+              <th
+                className="sticky top-0 z-30 border-b border-r bg-amber-100/80 px-2 py-2 text-center align-bottom font-medium leading-tight text-amber-950"
+                title="Сумма баллов: пассив ×1 + актив ×1,5"
+              >
                 Общий
                 <br />
                 балл
               </th>
-              <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
+              <th
+                className="sticky top-0 z-30 border-b border-r bg-sky-100/80 px-2 py-2 text-center align-bottom font-medium leading-tight text-sky-950"
+                title="Сумма часов активного и пассивного дозора"
+              >
                 Всего
                 <br />
                 часов
               </th>
               <th
-                className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
+                className="sticky top-0 z-30 border-b border-r-2 border-r-foreground/25 bg-muted px-2 py-2 text-center align-bottom font-medium"
                 title="1, если суммарно ≥ 10 часов дозоров"
               >
                 Активист
@@ -338,17 +344,26 @@ function DozoryMatrix({
                 <th
                   key={d}
                   colSpan={2}
-                  className="sticky top-0 z-30 border-b border-r bg-muted p-0 align-bottom"
+                  className="sticky top-0 z-30 border-b border-r-2 border-r-foreground/20 bg-muted p-0 align-bottom"
                 >
                   <div className="border-b border-border/60 px-1 py-1.5 text-center font-mono font-semibold text-sm">
                     {d}
+                    <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                      часы
+                    </span>
                   </div>
                   <div className="grid grid-cols-2">
-                    <div className="border-r border-border/60 px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-rose-800">
+                    <div className="border-r border-rose-300/80 bg-rose-50/90 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-rose-800">
                       Актив
+                      <span className="block font-normal normal-case tracking-normal text-rose-700/80">
+                        ×1,5
+                      </span>
                     </div>
-                    <div className="px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <div className="bg-sky-50/90 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-sky-900">
                       Пассив
+                      <span className="block font-normal normal-case tracking-normal text-sky-800/80">
+                        ×1
+                      </span>
                     </div>
                   </div>
                 </th>
@@ -424,23 +439,29 @@ function DozoryMatrix({
                   <td
                     className={cn(
                       cellBase,
-                      'font-semibold',
-                      stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                      'font-semibold tabular-nums text-amber-950',
+                      stripe ? 'bg-amber-50/40 hover:bg-amber-100/70' : 'bg-amber-50/25 hover:bg-amber-50'
                     )}
+                    title="Баллы"
                   >
                     {fmt(p.points)}
                   </td>
                   <td
                     className={cn(
                       cellBase,
-                      'font-semibold',
-                      stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                      'font-semibold tabular-nums text-sky-950',
+                      stripe ? 'bg-sky-50/50 hover:bg-sky-100/70' : 'bg-sky-50/30 hover:bg-sky-50'
                     )}
+                    title="Часы"
                   >
                     {fmt(p.hours)}
                   </td>
                   <td
-                    className={cn(cellBase, stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50')}
+                    className={cn(
+                      cellBase,
+                      'border-r-2 border-r-foreground/25',
+                      stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                    )}
                   >
                     {p.isActivist ? '1' : '0'}
                   </td>
@@ -453,23 +474,28 @@ function DozoryMatrix({
                           className={cn(
                             cellBase,
                             a > 0
-                              ? 'bg-rose-50/80 font-medium text-rose-900 hover:bg-rose-200'
-                              : stripe
-                                ? 'hover:bg-rose-100'
-                                : 'hover:bg-rose-50'
+                              ? 'bg-rose-100/90 font-medium text-rose-950 hover:bg-rose-200'
+                              : cn(
+                                  'bg-rose-50/30',
+                                  stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                                )
                           )}
+                          title={a > 0 ? `Актив: ${fmt(a)} ч → ${fmt(a * ACTIVE_RATE)} б` : 'Актив, часы'}
                         >
                           {a > 0 ? fmt(a) : ''}
                         </td>
                         <td
                           className={cn(
                             cellBase,
+                            'border-r-2 border-r-foreground/20',
                             s > 0
-                              ? 'bg-[#fff0f3] font-medium text-rose-800 hover:bg-rose-200/70'
-                              : stripe
-                                ? 'hover:bg-rose-100'
-                                : 'hover:bg-rose-50'
+                              ? 'bg-sky-100/90 font-medium text-sky-950 hover:bg-sky-200'
+                              : cn(
+                                  'bg-sky-50/30',
+                                  stripe ? 'hover:bg-sky-100' : 'hover:bg-sky-50'
+                                )
                           )}
+                          title={s > 0 ? `Пассив: ${fmt(s)} ч → ${fmt(s * PASSIVE_RATE)} б` : 'Пассив, часы'}
                         >
                           {s > 0 ? fmt(s) : ''}
                         </td>
@@ -717,8 +743,8 @@ export default function DozoryTool() {
               aria-label="Список постов с дозорами"
             />
             <p className="text-xs text-muted-foreground">
-              Ставки: пассивный — 1 балл/час · активный — 1,5 балла/час. Большой текст сворачивается
-              автоматически — таблица остаётся на виду.
+              В ячейках дат — только часы. Баллы считаются отдельно: пассив ×1, актив ×1,5. Большой
+              текст сворачивается автоматически — таблица остаётся на виду.
             </p>
           </div>
         ) : (
@@ -806,6 +832,28 @@ export default function DozoryTool() {
                 По баллам
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-200 ring-1 ring-amber-400/60" />
+              баллы
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-200 ring-1 ring-sky-400/60" />
+              часы
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-rose-200 ring-1 ring-rose-400/60" />
+              актив ×{ACTIVE_RATE.toLocaleString('ru-RU')}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-100 ring-1 ring-sky-500/50" />
+              пассив ×{PASSIVE_RATE}
+            </span>
+            <span className="text-muted-foreground/80">
+              В колонках дат — часы, не баллы
+            </span>
           </div>
 
           <DozoryMatrix
