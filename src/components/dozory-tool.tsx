@@ -612,28 +612,18 @@ export default function DozoryTool() {
                 </colgroup>
                 <thead>
                   <tr className="bg-muted">
-                    <th
-                      rowSpan={2}
-                      className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium"
-                    >
+                    <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium">
                       Имя CatWar
                     </th>
-                    <th
-                      rowSpan={2}
-                      className="sticky top-0 left-[144px] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
-                    >
+                    <th className="sticky top-0 left-[144px] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
                       ID
                     </th>
-                    <th
-                      rowSpan={2}
-                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight"
-                    >
+                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
                       Общий
                       <br />
                       балл
                     </th>
                     <th
-                      rowSpan={2}
                       className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
                       title="1, если суммарно ≥ 10 часов дозоров"
                     >
@@ -643,26 +633,20 @@ export default function DozoryTool() {
                       <th
                         key={d}
                         colSpan={2}
-                        className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom font-mono font-semibold text-sm"
+                        className="sticky top-0 z-30 border-b border-r bg-muted p-0 align-bottom"
                       >
-                        {d}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr className="bg-muted">
-                    {dates.map((d) => (
-                      <Fragment key={`${d}-sub`}>
-                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1 py-1.5 text-center align-middle">
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-rose-800">
+                        <div className="border-b border-border/60 px-1 py-1.5 text-center font-mono font-semibold text-sm">
+                          {d}
+                        </div>
+                        <div className="grid grid-cols-2">
+                          <div className="border-r border-border/60 px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-rose-800">
                             Актив
-                          </span>
-                        </th>
-                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1 py-1.5 text-center align-middle">
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          </div>
+                          <div className="px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             Пассив
-                          </span>
-                        </th>
-                      </Fragment>
+                          </div>
+                        </div>
+                      </th>
                     ))}
                   </tr>
                 </thead>
