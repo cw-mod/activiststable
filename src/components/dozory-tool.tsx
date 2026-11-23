@@ -467,7 +467,8 @@ export default function DozoryTool() {
     { icon: AlertTriangle, value: String(totals.warnings), label: 'с сомнениями', warn: totals.warnings > 0 },
   ]
 
-  const minTableWidth = 420 + dates.length * 128
+  // colgroup: 144 + 88 + 80 + 80 + dates * (68+68)
+  const minTableWidth = 392 + dates.length * 136
   const textChars = text.length
   const textLines = text ? text.split('\n').length : 0
 
@@ -630,30 +631,42 @@ export default function DozoryTool() {
             </div>
           </div>
 
-          {/* Sheet-like matrix — single scroll container, no nested sticky overlaps */}
+          {/* Sheet-like matrix — fixed column widths keep header/body aligned */}
           <div className="rounded-lg border overflow-hidden">
             <div className="overflow-auto max-h-[70vh]">
               <table
-                className="w-full caption-bottom text-sm border-separate border-spacing-0"
-                style={{ minWidth: minTableWidth }}
+                className="caption-bottom text-sm border-separate border-spacing-0"
+                style={{ tableLayout: 'fixed', width: minTableWidth, minWidth: minTableWidth }}
               >
+                <colgroup>
+                  <col style={{ width: 144 }} />
+                  <col style={{ width: 88 }} />
+                  <col style={{ width: 80 }} />
+                  <col style={{ width: 80 }} />
+                  {dates.map((d) => (
+                    <Fragment key={`col-${d}`}>
+                      <col style={{ width: 68 }} />
+                      <col style={{ width: 68 }} />
+                    </Fragment>
+                  ))}
+                </colgroup>
                 <thead>
                   <tr className="bg-muted">
                     <th
                       rowSpan={2}
-                      className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[9rem] min-w-[9rem] max-w-[9rem]"
+                      className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium"
                     >
                       Имя CatWar
                     </th>
                     <th
                       rowSpan={2}
-                      className="sticky top-0 left-[9rem] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                      className="sticky top-0 left-[144px] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
                     >
                       ID
                     </th>
                     <th
                       rowSpan={2}
-                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight"
+                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight"
                     >
                       Общий
                       <br />
@@ -661,7 +674,7 @@ export default function DozoryTool() {
                     </th>
                     <th
                       rowSpan={2}
-                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem]"
+                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
                     >
                       Активист
                     </th>
@@ -678,12 +691,12 @@ export default function DozoryTool() {
                   <tr className="bg-muted">
                     {dates.map((d) => (
                       <Fragment key={`${d}-sub`}>
-                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1.5 py-1.5 text-center align-middle min-w-[4.25rem]">
+                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1 py-1.5 text-center align-middle">
                           <span className="text-[10px] font-medium uppercase tracking-wide text-rose-800">
                             Актив
                           </span>
                         </th>
-                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1.5 py-1.5 text-center align-middle min-w-[4.25rem]">
+                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1 py-1.5 text-center align-middle">
                           <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             Пассив
                           </span>
@@ -713,7 +726,7 @@ export default function DozoryTool() {
                       <tr key={p.extId} className={cn('group border-b', rowBg)}>
                         <td
                           className={cn(
-                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium w-[9rem] min-w-[9rem] max-w-[9rem] transition-colors',
+                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium transition-colors',
                             stickyBg
                           )}
                         >
@@ -741,7 +754,7 @@ export default function DozoryTool() {
                         </td>
                         <td
                           className={cn(
-                            'sticky left-[9rem] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] transition-colors',
+                            'sticky left-[144px] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] transition-colors',
                             stickyBg
                           )}
                         >
