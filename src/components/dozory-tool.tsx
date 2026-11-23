@@ -110,7 +110,19 @@ function cleanText(s: string): string {
 
 function parseDeclaredDuration(s: string): number | null {
   const t = cleanText(s).toLowerCase()
-  const m = t.match(/(\d+(?:[.,]\d+)?)\s*(ч|час\w*|мин\w*)/)
+  // «1 час 30 минут» / «1ч 30 мин» / «3 часа 30 минут»
+  // Longer «час…» before bare «ч», иначе «часа» съедается как «ч».
+  const compound = t.match(
+    /(\d+(?:[.,]\d+)?)\s*(?:часов|часа|час|ч)\s+(\d+(?:[.,]\d+)?)\s*мин\w*/
+  )
+  if (compound) {
+    const h = Number.parseFloat(compound[1].replace(',', '.'))
+    const mins = Number.parseFloat(compound[2].replace(',', '.'))
+    if (Number.isFinite(h) && Number.isFinite(mins) && h >= 0 && mins >= 0) {
+      return round2(h + mins / 60)
+    }
+  }
+  const m = t.match(/(\d+(?:[.,]\d+)?)\s*(часов|часа|час|ч|мин\w*)/)
   if (!m) return null
   const n = Number.parseFloat(m[1].replace(',', '.'))
   if (!Number.isFinite(n) || n < 0) return null
@@ -180,7 +192,9 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
     if (declared != null) {
       hours = declared
       if (computed != null && Math.abs(declared - computed) > 0.05) {
-        warning = `заявлено ${fmt(declared)} ${hoursWord(declared)}, а по «Время» выходит ${fmt(computed)} ${hoursWord(computed)}`
+        const interval = timeLabel ?? '—'
+        const declaredShown = declaredRaw ?? `${fmt(declared)} ${hoursWord(declared)}`
+        warning = `в отчёте «Общее время: ${declaredShown}» (= ${fmt(declared)} ${hoursWord(declared)}), а интервал «Время: ${interval}» = ${fmt(computed)} ${hoursWord(computed)} — что верно?`
       }
     } else if (computed != null) {
       hours = computed
@@ -402,7 +416,9 @@ function DozoryMatrix({
           </thead>
           <tbody>
             {people.map((p, idx) => {
-              const hasWarn = p.entries.some((e) => e.warning)
+              const warnEntries = p.entries.filter((e) => e.warning)
+              const hasWarn = warnEntries.length > 0
+              const warnTitle = warnEntries.map((e) => e.warning).join('\n')
               const stripe = idx % 2 === 1
               const rowBg = hasWarn
                 ? 'bg-amber-50/70 dark:bg-amber-950/20'
@@ -442,7 +458,8 @@ function DozoryMatrix({
                     {hasWarn && (
                       <AlertTriangle
                         className="inline h-3 w-3 ml-1 text-amber-600 align-middle"
-                        aria-label="Есть расхождения во времени"
+                        aria-label="Спорное время — перепроверьте пост"
+                        title={warnTitle}
                       />
                     )}
                   </td>
@@ -685,6 +702,11 @@ export default function DozoryTool() {
     }
   }
 
+  const disputed = useMemo(
+    () => parsed.entries.filter((e) => e.warning),
+    [parsed.entries]
+  )
+
   const stats = [
     { icon: ListChecks, value: String(parsed.entries.length), label: 'записей', warn: false },
     { icon: UserRound, value: String(people.length), label: 'участников', warn: false },
@@ -696,7 +718,7 @@ export default function DozoryTool() {
       label: 'спорное время',
       warn: totals.warnings > 0,
       title:
-        'Посты, где «Общее время» не совпадает с интервалом «Время: ЧЧ:ММ — ЧЧ:ММ» — стоит перепроверить',
+        '«Общее время» в посте не совпадает с длиной интервала «Время: ЧЧ:ММ — ЧЧ:ММ». В расчёт берём «Общее время» — сверьте, какая цифра верная.',
     },
   ]
 
@@ -811,6 +833,34 @@ export default function DozoryTool() {
           Постов с заголовком дозора, но без «Дозорный» или времени: {parsed.skipped} — они не попали
           в расчёт.
         </p>
+      )}
+
+      {disputed.length > 0 && (
+        <div className="rounded-lg border border-amber-300/80 bg-amber-50/80 px-4 py-3 space-y-2">
+          <p className="text-sm font-medium text-amber-950 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+            Спорное время — перепроверьте эти посты
+          </p>
+          <p className="text-xs text-amber-900/90 leading-relaxed">
+            В расчёт сейчас идёт строка «Общее время». Если она ошибочна, а верный интервал в
+            «Время: ЧЧ:ММ — ЧЧ:ММ» — поправьте «Общее время» в исходном посте (или наоборот).
+            Пример: «Общее время: 30 минут», а «Время: 09:03 — 10:03» — это уже 1 час.
+          </p>
+          <ul className="space-y-2 text-xs text-amber-950">
+            {disputed.map((e, i) => (
+              <li
+                key={`${e.extId}-${e.date}-${e.kind}-${i}`}
+                className="rounded-md border border-amber-200/80 bg-background/70 px-3 py-2"
+              >
+                <div className="font-medium">
+                  {e.name} [{e.extId}] · {shortDate(e.date)} ·{' '}
+                  {e.kind === 'active' ? 'актив' : 'пассив'}
+                </div>
+                <div className="mt-0.5 text-amber-900/90">{e.warning}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {people.length === 0 ? (
