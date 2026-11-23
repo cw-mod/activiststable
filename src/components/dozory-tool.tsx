@@ -33,6 +33,10 @@ type WatchEntry = {
   hours: number
   points: number
   sector: string
+  /** «Время: ЧЧ:ММ — ЧЧ:ММ» из поста, если было */
+  timeLabel: string | null
+  /** Текст «Общее время: …» из поста, если был */
+  declaredLabel: string | null
   warning: string | null
 }
 
@@ -162,9 +166,13 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
 
     const timeM = chunk.match(/Время:\s*(\d{1,2}):(\d{2})\s*[—–-]\s*(\d{1,2}):(\d{2})/i)
     const declaredM = chunk.match(/Общее время:\s*([^\n]+)/i)
-    const declared = declaredM ? parseDeclaredDuration(declaredM[1]) : null
+    const declaredRaw = declaredM ? cleanText(declaredM[1]) : null
+    const declared = declaredRaw ? parseDeclaredDuration(declaredRaw) : null
     const computed = timeM
       ? timeRangeHours(Number(timeM[1]), Number(timeM[2]), Number(timeM[3]), Number(timeM[4]))
+      : null
+    const timeLabel = timeM
+      ? `${timeM[1].padStart(2, '0')}:${timeM[2]} — ${timeM[3].padStart(2, '0')}:${timeM[4]}`
       : null
 
     let hours: number
@@ -189,6 +197,8 @@ function parseDozory(text: string): { entries: WatchEntry[]; skipped: number } {
       hours,
       points: round2(hours * (kind === 'passive' ? PASSIVE_RATE : ACTIVE_RATE)),
       sector,
+      timeLabel,
+      declaredLabel: declaredRaw,
       warning,
     })
   }
@@ -243,6 +253,26 @@ function dayCell(p: Person, day: string, kind: WatchKind): number {
   const d = p.byDay[day]
   if (!d) return 0
   return kind === 'active' ? d.active : d.passive
+}
+
+function dayEntries(p: Person, day: string, kind: WatchKind): WatchEntry[] {
+  return p.entries.filter((e) => shortDate(e.date) === day && e.kind === kind)
+}
+
+/** Подсказка: часы как в отчёте, без перевода в баллы */
+function dayCellTitle(p: Person, day: string, kind: WatchKind): string {
+  const kindLabel = kind === 'active' ? 'Актив' : 'Пассив'
+  const list = dayEntries(p, day, kind)
+  if (list.length === 0) return `${kindLabel}: нет записей`
+  const lines = list.map((e) => {
+    const parts: string[] = []
+    if (e.declaredLabel) parts.push(`Общее время: ${e.declaredLabel}`)
+    if (e.timeLabel) parts.push(`Время: ${e.timeLabel}`)
+    if (parts.length === 0) parts.push(`${fmt(e.hours)} ${hoursWord(e.hours)}`)
+    return parts.join(' · ')
+  })
+  if (lines.length === 1) return `${kindLabel}: ${lines[0]}`
+  return `${kindLabel} (${list.length}):\n${lines.map((l, i) => `${i + 1}) ${l}`).join('\n')}`
 }
 
 /** TSV matching the Google Sheets template for paste */
@@ -480,7 +510,7 @@ function DozoryMatrix({
                                   stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
                                 )
                           )}
-                          title={a > 0 ? `Актив: ${fmt(a)} ч → ${fmt(a * ACTIVE_RATE)} б` : 'Актив, часы'}
+                          title={dayCellTitle(p, d, 'active')}
                         >
                           {a > 0 ? fmt(a) : ''}
                         </td>
@@ -495,7 +525,7 @@ function DozoryMatrix({
                                   stripe ? 'hover:bg-sky-100' : 'hover:bg-sky-50'
                                 )
                           )}
-                          title={s > 0 ? `Пассив: ${fmt(s)} ч → ${fmt(s * PASSIVE_RATE)} б` : 'Пассив, часы'}
+                          title={dayCellTitle(p, d, 'passive')}
                         >
                           {s > 0 ? fmt(s) : ''}
                         </td>
