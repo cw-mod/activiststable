@@ -198,6 +198,15 @@ export default function Page() {
   const [query, setQuery] = useState('')
   const [view, setView] = useState<'activists' | 'dozory'>('activists')
 
+  const selectView = useCallback((next: 'activists' | 'dozory') => {
+    setView(next)
+    try {
+      localStorage.setItem('activiststable:view', next)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   // dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Activist | null>(null)
@@ -240,6 +249,8 @@ export default function Page() {
     const def = defaultWeek()
     setBbFrom(localStorage.getItem('bbDateFrom') ?? def.from)
     setBbTo(localStorage.getItem('bbDateTo') ?? def.to)
+    const saved = localStorage.getItem('activiststable:view')
+    if (saved === 'activists' || saved === 'dozory') setView(saved)
   }, [])
 
   const sorted = useMemo(() => [...activists].sort(ruCompare), [activists])
