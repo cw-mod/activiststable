@@ -245,25 +245,22 @@ function dayCell(p: Person, day: string, kind: WatchKind): number {
   return kind === 'active' ? d.active : d.passive
 }
 
-type MatrixMode = 'points' | 'hours'
-
 /** TSV matching the Google Sheets template for paste */
-function buildSheetTsv(people: Person[], dates: string[], mode: MatrixMode = 'points'): string {
-  const totalLabel = mode === 'points' ? 'Общий балл' : 'Всего часов'
-  const r1 = ['Имя CatWar', 'ID', totalLabel, 'Активист']
+function buildSheetTsv(people: Person[], dates: string[]): string {
+  const r1 = ['Имя CatWar', 'ID', 'Общий балл', 'Всего часов', 'Активист']
   for (const d of dates) {
     r1.push(d, '') // date spans active+passive
   }
-  const r2 = ['', '', '', '']
+  const r2 = ['', '', '', '', '']
   for (const _d of dates) {
     r2.push('Активный', 'Пассивный')
   }
   const body = people.map((p) => {
-    const total = mode === 'points' ? p.points : p.hours
     const row = [
       p.name,
       p.extId,
-      fmtSheet(total),
+      fmtSheet(p.points),
+      fmtSheet(p.hours),
       p.isActivist ? '1' : '0',
     ]
     for (const d of dates) {
@@ -277,7 +274,6 @@ function buildSheetTsv(people: Person[], dates: string[], mode: MatrixMode = 'po
 }
 
 type DozoryMatrixProps = {
-  mode: MatrixMode
   people: Person[]
   dates: string[]
   minTableWidth: number
@@ -287,7 +283,6 @@ type DozoryMatrixProps = {
 }
 
 function DozoryMatrix({
-  mode,
   people,
   dates,
   minTableWidth,
@@ -307,8 +302,9 @@ function DozoryMatrix({
             <col style={{ width: 88 }} />
             <col style={{ width: 80 }} />
             <col style={{ width: 80 }} />
+            <col style={{ width: 80 }} />
             {dates.map((d) => (
-              <Fragment key={`col-${mode}-${d}`}>
+              <Fragment key={`col-${d}`}>
                 <col style={{ width: 68 }} />
                 <col style={{ width: 68 }} />
               </Fragment>
@@ -323,19 +319,14 @@ function DozoryMatrix({
                 ID
               </th>
               <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
-                {mode === 'points' ? (
-                  <>
-                    Общий
-                    <br />
-                    балл
-                  </>
-                ) : (
-                  <>
-                    Всего
-                    <br />
-                    часов
-                  </>
-                )}
+                Общий
+                <br />
+                балл
+              </th>
+              <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
+                Всего
+                <br />
+                часов
               </th>
               <th
                 className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
@@ -345,7 +336,7 @@ function DozoryMatrix({
               </th>
               {dates.map((d) => (
                 <th
-                  key={`${mode}-${d}`}
+                  key={d}
                   colSpan={2}
                   className="sticky top-0 z-30 border-b border-r bg-muted p-0 align-bottom"
                 >
@@ -380,9 +371,8 @@ function DozoryMatrix({
                   : 'bg-background hover:bg-rose-50'
               const cellBase =
                 'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap transition-colors'
-              const total = mode === 'points' ? p.points : p.hours
               return (
-                <tr key={`${mode}-${p.extId}`} className={cn('group border-b', rowBg)}>
+                <tr key={p.extId} className={cn('group border-b', rowBg)}>
                   <td
                     className={cn(
                       'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium transition-colors',
@@ -438,7 +428,16 @@ function DozoryMatrix({
                       stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
                     )}
                   >
-                    {fmt(total)}
+                    {fmt(p.points)}
+                  </td>
+                  <td
+                    className={cn(
+                      cellBase,
+                      'font-semibold',
+                      stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                    )}
+                  >
+                    {fmt(p.hours)}
                   </td>
                   <td
                     className={cn(cellBase, stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50')}
@@ -449,7 +448,7 @@ function DozoryMatrix({
                     const a = dayCell(p, d, 'active')
                     const s = dayCell(p, d, 'passive')
                     return (
-                      <Fragment key={`${mode}-${p.extId}-${d}`}>
+                      <Fragment key={`${p.extId}-${d}`}>
                         <td
                           className={cn(
                             cellBase,
@@ -603,16 +602,13 @@ export default function DozoryTool() {
     toast(ok ? { title: 'ID скопирован', description: extId } : { title: 'Не удалось скопировать' })
   }
 
-  async function copySheet(mode: MatrixMode = 'points') {
-    const ok = await copyText(buildSheetTsv(sortedPeople, dates, mode))
+  async function copySheet() {
+    const ok = await copyText(buildSheetTsv(sortedPeople, dates))
     toast(
       ok
         ? {
-            title: mode === 'points' ? 'Скопировано для таблицы' : 'Скопированы часы',
-            description:
-              mode === 'points'
-                ? 'Вставьте в Google Sheets (Ctrl+V) — колонки как в шаблоне'
-                : 'В колонке итога — часы, не баллы',
+            title: 'Скопировано для таблицы',
+            description: 'Вставьте в Google Sheets (Ctrl+V) — колонки как в шаблоне',
           }
         : { title: 'Не удалось скопировать' }
     )
@@ -648,8 +644,8 @@ export default function DozoryTool() {
     },
   ]
 
-  // colgroup: 144 + 88 + 80 + 80 + dates * (68+68)
-  const minTableWidth = 392 + dates.length * 136
+  // colgroup: 144 + 88 + 80 + 80 + 80 + dates * (68+68)
+  const minTableWidth = 472 + dates.length * 136
   const textChars = text.length
   const textLines = text ? text.split('\n').length : 0
 
@@ -773,7 +769,7 @@ export default function DozoryTool() {
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => copySheet('points')}>
+              <Button onClick={copySheet}>
                 <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
                 Скопировать для таблицы
               </Button>
@@ -812,9 +808,7 @@ export default function DozoryTool() {
             </div>
           </div>
 
-          <p className="text-sm font-medium text-foreground">Баллы</p>
           <DozoryMatrix
-            mode="points"
             people={sortedPeople}
             dates={dates}
             minTableWidth={minTableWidth}
@@ -827,40 +821,11 @@ export default function DozoryTool() {
                   {fmt(totals.hours)}
                 </span>
                 <span>Общий балл суммарно: {fmt(totals.points)}</span>
-                <span>Дат в шапке: {dates.join(', ')}</span>
-              </>
-            }
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-            <p className="text-sm font-medium text-foreground">
-              Часы{' '}
-              <span className="font-normal text-muted-foreground">
-                — те же ячейки по дням, в итоге суммарные часы (активист от ≥ {ACTIVIST_MIN_HOURS} ч)
-              </span>
-            </p>
-            <Button variant="outline" onClick={() => copySheet('hours')}>
-              <Timer className="h-4 w-4 mr-1" aria-hidden="true" />
-              Скопировать часы
-            </Button>
-          </div>
-          <DozoryMatrix
-            mode="hours"
-            people={sortedPeople}
-            dates={dates}
-            minTableWidth={minTableWidth}
-            onCopyName={copyName}
-            onCopyId={copyId}
-            footer={
-              <>
-                <span>
-                  Итого: пассив {fmt(totals.passive)} · актив {fmt(totals.active)} · всего{' '}
-                  {fmt(totals.hours)} {hoursWord(totals.hours)}
-                </span>
                 <span>
                   Активистов (≥ {ACTIVIST_MIN_HOURS} ч):{' '}
                   {sortedPeople.filter((p) => p.isActivist).length}
                 </span>
+                <span>Дат в шапке: {dates.join(', ')}</span>
               </>
             }
           />
