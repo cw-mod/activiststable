@@ -639,33 +639,54 @@ export default function DozoryTool() {
               >
                 <thead>
                   <tr className="bg-muted">
-                    <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[9rem] min-w-[9rem] max-w-[9rem]">
+                    <th
+                      rowSpan={2}
+                      className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[9rem] min-w-[9rem] max-w-[9rem]"
+                    >
                       Имя CatWar
                     </th>
-                    <th className="sticky top-0 left-[9rem] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
+                    <th
+                      rowSpan={2}
+                      className="sticky top-0 left-[9rem] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium w-[5.5rem] min-w-[5.5rem] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                    >
                       ID
                     </th>
-                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight">
+                    <th
+                      rowSpan={2}
+                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem] leading-tight"
+                    >
                       Общий
                       <br />
                       балл
                     </th>
-                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem]">
+                    <th
+                      rowSpan={2}
+                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium min-w-[5rem]"
+                    >
                       Активист
                     </th>
                     {dates.map((d) => (
-                      <Fragment key={d}>
-                        <th className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
-                          <div className="font-mono font-semibold text-sm leading-none">{d}</div>
-                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-rose-800">
+                      <th
+                        key={d}
+                        colSpan={2}
+                        className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom font-mono font-semibold text-sm"
+                      >
+                        {d}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr className="bg-muted">
+                    {dates.map((d) => (
+                      <Fragment key={`${d}-sub`}>
+                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1.5 py-1.5 text-center align-middle min-w-[4.25rem]">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-rose-800">
                             Актив
-                          </div>
+                          </span>
                         </th>
-                        <th className="sticky top-0 z-30 border-b border-r bg-muted px-1.5 py-2 text-center align-bottom min-w-[4.25rem]">
-                          <div className="font-mono font-semibold text-sm leading-none">{d}</div>
-                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        <th className="sticky top-[2.75rem] z-30 border-b border-r bg-muted px-1.5 py-1.5 text-center align-middle min-w-[4.25rem]">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             Пассив
-                          </div>
+                          </span>
                         </th>
                       </Fragment>
                     ))}
