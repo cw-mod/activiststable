@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
@@ -245,9 +245,12 @@ function dayCell(p: Person, day: string, kind: WatchKind): number {
   return kind === 'active' ? d.active : d.passive
 }
 
+type MatrixMode = 'points' | 'hours'
+
 /** TSV matching the Google Sheets template for paste */
-function buildSheetTsv(people: Person[], dates: string[]): string {
-  const r1 = ['Имя CatWar', 'ID', 'Общий балл', 'Активист']
+function buildSheetTsv(people: Person[], dates: string[], mode: MatrixMode = 'points'): string {
+  const totalLabel = mode === 'points' ? 'Общий балл' : 'Всего часов'
+  const r1 = ['Имя CatWar', 'ID', totalLabel, 'Активист']
   for (const d of dates) {
     r1.push(d, '') // date spans active+passive
   }
@@ -256,10 +259,11 @@ function buildSheetTsv(people: Person[], dates: string[]): string {
     r2.push('Активный', 'Пассивный')
   }
   const body = people.map((p) => {
+    const total = mode === 'points' ? p.points : p.hours
     const row = [
       p.name,
       p.extId,
-      fmtSheet(p.points),
+      fmtSheet(total),
       p.isActivist ? '1' : '0',
     ]
     for (const d of dates) {
@@ -270,6 +274,220 @@ function buildSheetTsv(people: Person[], dates: string[]): string {
     return row.join('\t')
   })
   return [r1.join('\t'), r2.join('\t'), ...body].join('\n')
+}
+
+type DozoryMatrixProps = {
+  mode: MatrixMode
+  people: Person[]
+  dates: string[]
+  minTableWidth: number
+  onCopyName: (p: Person) => void
+  onCopyId: (extId: string) => void
+  footer: ReactNode
+}
+
+function DozoryMatrix({
+  mode,
+  people,
+  dates,
+  minTableWidth,
+  onCopyName,
+  onCopyId,
+  footer,
+}: DozoryMatrixProps) {
+  return (
+    <div className="rounded-lg border overflow-hidden">
+      <div className="overflow-auto max-h-[70vh]">
+        <table
+          className="caption-bottom text-sm border-separate border-spacing-0"
+          style={{ tableLayout: 'fixed', width: minTableWidth, minWidth: minTableWidth }}
+        >
+          <colgroup>
+            <col style={{ width: 144 }} />
+            <col style={{ width: 88 }} />
+            <col style={{ width: 80 }} />
+            <col style={{ width: 80 }} />
+            {dates.map((d) => (
+              <Fragment key={`col-${mode}-${d}`}>
+                <col style={{ width: 68 }} />
+                <col style={{ width: 68 }} />
+              </Fragment>
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="bg-muted">
+              <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium">
+                Имя CatWar
+              </th>
+              <th className="sticky top-0 left-[144px] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
+                ID
+              </th>
+              <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
+                {mode === 'points' ? (
+                  <>
+                    Общий
+                    <br />
+                    балл
+                  </>
+                ) : (
+                  <>
+                    Всего
+                    <br />
+                    часов
+                  </>
+                )}
+              </th>
+              <th
+                className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
+                title="1, если суммарно ≥ 10 часов дозоров"
+              >
+                Активист
+              </th>
+              {dates.map((d) => (
+                <th
+                  key={`${mode}-${d}`}
+                  colSpan={2}
+                  className="sticky top-0 z-30 border-b border-r bg-muted p-0 align-bottom"
+                >
+                  <div className="border-b border-border/60 px-1 py-1.5 text-center font-mono font-semibold text-sm">
+                    {d}
+                  </div>
+                  <div className="grid grid-cols-2">
+                    <div className="border-r border-border/60 px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-rose-800">
+                      Актив
+                    </div>
+                    <div className="px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Пассив
+                    </div>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {people.map((p, idx) => {
+              const hasWarn = p.entries.some((e) => e.warning)
+              const stripe = idx % 2 === 1
+              const rowBg = hasWarn
+                ? 'bg-amber-50/70 dark:bg-amber-950/20'
+                : stripe
+                  ? 'bg-[#fff5f7]'
+                  : 'bg-background'
+              const stickyBg = hasWarn
+                ? 'bg-amber-50 dark:bg-amber-950'
+                : stripe
+                  ? 'bg-[#fff5f7] hover:bg-rose-100'
+                  : 'bg-background hover:bg-rose-50'
+              const cellBase =
+                'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap transition-colors'
+              const total = mode === 'points' ? p.points : p.hours
+              return (
+                <tr key={`${mode}-${p.extId}`} className={cn('group border-b', rowBg)}>
+                  <td
+                    className={cn(
+                      'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium transition-colors',
+                      stickyBg
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onCopyName(p)}
+                      className="group/name inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-rose-500"
+                      aria-label={`Скопировать ${p.name} [${p.extId}]`}
+                      title="Клик — скопировать «Имя [ID]»"
+                    >
+                      <span className="truncate" title={p.name}>
+                        {p.name}
+                      </span>
+                      <Copy
+                        className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/name:opacity-70"
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {hasWarn && (
+                      <AlertTriangle
+                        className="inline h-3 w-3 ml-1 text-amber-600 align-middle"
+                        aria-label="Есть расхождения во времени"
+                      />
+                    )}
+                  </td>
+                  <td
+                    className={cn(
+                      'sticky left-[144px] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] transition-colors',
+                      stickyBg
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onCopyId(p.extId)}
+                      className="group inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground transition-colors hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-rose-500"
+                      aria-label={`Скопировать ID ${p.extId}`}
+                      title="Клик — скопировать только ID"
+                    >
+                      {p.extId}
+                      <Copy
+                        className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </td>
+                  <td
+                    className={cn(
+                      cellBase,
+                      'font-semibold',
+                      stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
+                    )}
+                  >
+                    {fmt(total)}
+                  </td>
+                  <td
+                    className={cn(cellBase, stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50')}
+                  >
+                    {p.isActivist ? '1' : '0'}
+                  </td>
+                  {dates.map((d) => {
+                    const a = dayCell(p, d, 'active')
+                    const s = dayCell(p, d, 'passive')
+                    return (
+                      <Fragment key={`${mode}-${p.extId}-${d}`}>
+                        <td
+                          className={cn(
+                            cellBase,
+                            a > 0
+                              ? 'bg-rose-50/80 font-medium text-rose-900 hover:bg-rose-200'
+                              : stripe
+                                ? 'hover:bg-rose-100'
+                                : 'hover:bg-rose-50'
+                          )}
+                        >
+                          {a > 0 ? fmt(a) : ''}
+                        </td>
+                        <td
+                          className={cn(
+                            cellBase,
+                            s > 0
+                              ? 'bg-[#fff0f3] font-medium text-rose-800 hover:bg-rose-200/70'
+                              : stripe
+                                ? 'hover:bg-rose-100'
+                                : 'hover:bg-rose-50'
+                          )}
+                        >
+                          {s > 0 ? fmt(s) : ''}
+                        </td>
+                      </Fragment>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+        {footer}
+      </div>
+    </div>
+  )
 }
 
 async function copyText(t: string): Promise<boolean> {
@@ -385,13 +603,16 @@ export default function DozoryTool() {
     toast(ok ? { title: 'ID скопирован', description: extId } : { title: 'Не удалось скопировать' })
   }
 
-  async function copySheet() {
-    const ok = await copyText(buildSheetTsv(sortedPeople, dates))
+  async function copySheet(mode: MatrixMode = 'points') {
+    const ok = await copyText(buildSheetTsv(sortedPeople, dates, mode))
     toast(
       ok
         ? {
-            title: 'Скопировано для таблицы',
-            description: 'Вставьте в Google Sheets (Ctrl+V) — колонки как в шаблоне',
+            title: mode === 'points' ? 'Скопировано для таблицы' : 'Скопированы часы',
+            description:
+              mode === 'points'
+                ? 'Вставьте в Google Sheets (Ctrl+V) — колонки как в шаблоне'
+                : 'В колонке итога — часы, не баллы',
           }
         : { title: 'Не удалось скопировать' }
     )
@@ -552,7 +773,7 @@ export default function DozoryTool() {
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={copySheet}>
+              <Button onClick={() => copySheet('points')}>
                 <Sheet className="h-4 w-4 mr-1" aria-hidden="true" />
                 Скопировать для таблицы
               </Button>
@@ -591,196 +812,58 @@ export default function DozoryTool() {
             </div>
           </div>
 
-          {/* Sheet-like matrix — fixed column widths keep header/body aligned */}
-          <div className="rounded-lg border overflow-hidden">
-            <div className="overflow-auto max-h-[70vh]">
-              <table
-                className="caption-bottom text-sm border-separate border-spacing-0"
-                style={{ tableLayout: 'fixed', width: minTableWidth, minWidth: minTableWidth }}
-              >
-                <colgroup>
-                  <col style={{ width: 144 }} />
-                  <col style={{ width: 88 }} />
-                  <col style={{ width: 80 }} />
-                  <col style={{ width: 80 }} />
-                  {dates.map((d) => (
-                    <Fragment key={`col-${d}`}>
-                      <col style={{ width: 68 }} />
-                      <col style={{ width: 68 }} />
-                    </Fragment>
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr className="bg-muted">
-                    <th className="sticky top-0 left-0 z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium">
-                      Имя CatWar
-                    </th>
-                    <th className="sticky top-0 left-[144px] z-40 border-b border-r bg-muted px-2 py-2 text-left align-bottom font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
-                      ID
-                    </th>
-                    <th className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium leading-tight">
-                      Общий
-                      <br />
-                      балл
-                    </th>
-                    <th
-                      className="sticky top-0 z-30 border-b border-r bg-muted px-2 py-2 text-center align-bottom font-medium"
-                      title="1, если суммарно ≥ 10 часов дозоров"
-                    >
-                      Активист
-                    </th>
-                    {dates.map((d) => (
-                      <th
-                        key={d}
-                        colSpan={2}
-                        className="sticky top-0 z-30 border-b border-r bg-muted p-0 align-bottom"
-                      >
-                        <div className="border-b border-border/60 px-1 py-1.5 text-center font-mono font-semibold text-sm">
-                          {d}
-                        </div>
-                        <div className="grid grid-cols-2">
-                          <div className="border-r border-border/60 px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-rose-800">
-                            Актив
-                          </div>
-                          <div className="px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Пассив
-                          </div>
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedPeople.map((p, idx) => {
-                    const hasWarn = p.entries.some((e) => e.warning)
-                    const stripe = idx % 2 === 1
-                    // Very pale zebra; cell hover deepens pink locally
-                    const rowBg = hasWarn
-                      ? 'bg-amber-50/70 dark:bg-amber-950/20'
-                      : stripe
-                        ? 'bg-[#fff5f7]'
-                        : 'bg-background'
-                    const stickyBg = hasWarn
-                      ? 'bg-amber-50 dark:bg-amber-950'
-                      : stripe
-                        ? 'bg-[#fff5f7] hover:bg-rose-100'
-                        : 'bg-background hover:bg-rose-50'
-                    const cellBase =
-                      'border-b border-r px-2 py-2 text-center text-sm tabular-nums whitespace-nowrap transition-colors'
-                    return (
-                      <tr key={p.extId} className={cn('group border-b', rowBg)}>
-                        <td
-                          className={cn(
-                            'sticky left-0 z-10 border-b border-r px-2 py-2 font-medium transition-colors',
-                            stickyBg
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => copyName(p)}
-                            className="group/name inline-flex max-w-full items-center gap-1 rounded text-left font-medium transition-colors hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-rose-500"
-                            aria-label={`Скопировать ${p.name} [${p.extId}]`}
-                            title="Клик — скопировать «Имя [ID]»"
-                          >
-                            <span className="truncate" title={p.name}>
-                              {p.name}
-                            </span>
-                            <Copy
-                              className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/name:opacity-70"
-                              aria-hidden="true"
-                            />
-                          </button>
-                          {hasWarn && (
-                            <AlertTriangle
-                              className="inline h-3 w-3 ml-1 text-amber-600 align-middle"
-                              aria-label="Есть расхождения во времени"
-                            />
-                          )}
-                        </td>
-                        <td
-                          className={cn(
-                            'sticky left-[144px] z-10 border-b border-r px-2 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] transition-colors',
-                            stickyBg
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => copyId(p.extId)}
-                            className="group inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground transition-colors hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-rose-500"
-                            aria-label={`Скопировать ID ${p.extId}`}
-                            title="Клик — скопировать только ID"
-                          >
-                            {p.extId}
-                            <Copy
-                              className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
-                              aria-hidden="true"
-                            />
-                          </button>
-                        </td>
-                        <td
-                          className={cn(
-                            cellBase,
-                            'font-semibold',
-                            stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
-                          )}
-                        >
-                          {fmt(p.points)}
-                        </td>
-                        <td
-                          className={cn(
-                            cellBase,
-                            stripe ? 'hover:bg-rose-100' : 'hover:bg-rose-50'
-                          )}
-                        >
-                          {p.isActivist ? '1' : '0'}
-                        </td>
-                        {dates.map((d) => {
-                          const a = dayCell(p, d, 'active')
-                          const s = dayCell(p, d, 'passive')
-                          return (
-                            <Fragment key={d}>
-                              <td
-                                className={cn(
-                                  cellBase,
-                                  a > 0
-                                    ? 'bg-rose-50/80 font-medium text-rose-900 hover:bg-rose-200'
-                                    : stripe
-                                      ? 'hover:bg-rose-100'
-                                      : 'hover:bg-rose-50'
-                                )}
-                              >
-                                {a > 0 ? fmt(a) : ''}
-                              </td>
-                              <td
-                                className={cn(
-                                  cellBase,
-                                  s > 0
-                                    ? 'bg-[#fff0f3] font-medium text-rose-800 hover:bg-rose-200/70'
-                                    : stripe
-                                      ? 'hover:bg-rose-100'
-                                      : 'hover:bg-rose-50'
-                                )}
-                              >
-                                {s > 0 ? fmt(s) : ''}
-                              </td>
-                            </Fragment>
-                          )
-                        })}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-              <span>
-                Итого часов: пассив {fmt(totals.passive)} · актив {fmt(totals.active)} · всего{' '}
-                {fmt(totals.hours)}
+          <p className="text-sm font-medium text-foreground">Баллы</p>
+          <DozoryMatrix
+            mode="points"
+            people={sortedPeople}
+            dates={dates}
+            minTableWidth={minTableWidth}
+            onCopyName={copyName}
+            onCopyId={copyId}
+            footer={
+              <>
+                <span>
+                  Итого часов: пассив {fmt(totals.passive)} · актив {fmt(totals.active)} · всего{' '}
+                  {fmt(totals.hours)}
+                </span>
+                <span>Общий балл суммарно: {fmt(totals.points)}</span>
+                <span>Дат в шапке: {dates.join(', ')}</span>
+              </>
+            }
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+            <p className="text-sm font-medium text-foreground">
+              Часы{' '}
+              <span className="font-normal text-muted-foreground">
+                — те же ячейки по дням, в итоге суммарные часы (активист от ≥ {ACTIVIST_MIN_HOURS} ч)
               </span>
-              <span>Общий балл суммарно: {fmt(totals.points)}</span>
-              <span>Дат в шапке: {dates.join(', ')}</span>
-            </div>
+            </p>
+            <Button variant="outline" onClick={() => copySheet('hours')}>
+              <Timer className="h-4 w-4 mr-1" aria-hidden="true" />
+              Скопировать часы
+            </Button>
           </div>
+          <DozoryMatrix
+            mode="hours"
+            people={sortedPeople}
+            dates={dates}
+            minTableWidth={minTableWidth}
+            onCopyName={copyName}
+            onCopyId={copyId}
+            footer={
+              <>
+                <span>
+                  Итого: пассив {fmt(totals.passive)} · актив {fmt(totals.active)} · всего{' '}
+                  {fmt(totals.hours)} {hoursWord(totals.hours)}
+                </span>
+                <span>
+                  Активистов (≥ {ACTIVIST_MIN_HOURS} ч):{' '}
+                  {sortedPeople.filter((p) => p.isActivist).length}
+                </span>
+              </>
+            }
+          />
         </>
       )}
     </div>
